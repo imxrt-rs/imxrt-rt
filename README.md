@@ -57,8 +57,8 @@ miss that goal, please file an issue!
   challenge. Check out mpasternacki's work
 - [here](https://gitlab.com/teensy-rs/teensy-4) as an alternative approach
   towards the same problem.  The Rust Cortex M team, specifically the
-- [`cortex-m-rt`](https://github.com/rust-embedded/cortex-m-rt) crate.
-- ['teensy4-rs'](https://github.com/mciantyre/teensy4-rs) Project which this is
+  [`cortex-m-rt`](https://github.com/rust-embedded/cortex-m-rt) crate.
+- [`teensy4-rs`](https://github.com/mciantyre/teensy4-rs) Project which this is
   entirely based off.
 
 ## License
