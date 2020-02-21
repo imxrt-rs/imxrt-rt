@@ -1,12 +1,6 @@
 INCLUDE device.x
 
-MEMORY
-{
-    ITCM    (rwx): ORIGIN = 0x00000000, LENGTH = 512K
-    DTCM    (rwx): ORIGIN = 0x20000000, LENGTH = 512K
-    RAM     (rwx): ORIGIN = 0x20200000, LENGTH = 512K
-    FLASH   (rwx): ORIGIN = 0x60000000, LENGTH = 1984K
-}
+INCLUDE memory.x
 
 /* Symbol provided by Rust */
 EXTERN(_reset);
@@ -33,7 +27,7 @@ PROVIDE(DefaultHandler = DefaultHandler_);
 
 SECTIONS
 {
-    /* The boot section contains all the special things that allow the IMXRT1062 to boot */
+    /* The boot section contains all the special things that allow the IMXRT to boot */
     .boot :
     {
         /* Firmware Configuration Block (FCB) */
@@ -122,21 +116,21 @@ SECTIONS
 
 /* Asserts that check some Rust requirements */
 ASSERT(ORIGIN(FLASH) % 4 == 0, "
-ERROR(imxrt1062-rt): the start of the FLASH region must be 4-byte aligned");
+ERROR(imxrt-rt): the start of the FLASH region must be 4-byte aligned");
 
 ASSERT(ORIGIN(RAM) % 4 == 0, "
-ERROR(imxrt1062-rt): the start of the RAM region must be 4-byte aligned");
+ERROR(imxrt-rt): the start of the RAM region must be 4-byte aligned");
 
 ASSERT(__sdata % 4 == 0 && __edata % 4 == 0, "
-ERROR(imxrt1062-rt): .data is not 4-byte aligned");
+ERROR(imxrt-rt): .data is not 4-byte aligned");
 
 ASSERT(__sidata % 4 == 0, "
-ERROR(imxrt1062-rt): the LMA of .data is not 4-byte aligned");
+ERROR(imxrt-rt): the LMA of .data is not 4-byte aligned");
 
 ASSERT(__sbss % 4 == 0 && __ebss % 4 == 0, "
-ERROR(imxrt1062-rt): .bss is not 4-byte aligned");
+ERROR(imxrt-rt): .bss is not 4-byte aligned");
 
 ASSERT(__stext % 4 == 0 && __etext % 4 == 0, "
-ERROR(imxrt1062-rt): .text is not 4-byte aligned");
+ERROR(imxrt-rt): .text is not 4-byte aligned");
 
 ENTRY(image_vector_table);
