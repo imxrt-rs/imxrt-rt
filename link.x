@@ -22,8 +22,9 @@ PROVIDE(SVCall = DefaultHandler);
 PROVIDE(DebugMonitor = DefaultHandler);
 PROVIDE(PendSV = DefaultHandler);
 PROVIDE(SysTick = DefaultHandler);
-PROVIDE(HardFault = HardFault_);
+
 PROVIDE(DefaultHandler = DefaultHandler_);
+PROVIDE(HardFault = HardFault_);
 
 SECTIONS
 {

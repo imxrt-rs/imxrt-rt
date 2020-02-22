@@ -9,14 +9,6 @@ const NUM_EXCEPTIONS: usize = 14;
 /// since it seems that the SVD doesn't document these, or svd2rust removes them.)
 const NUM_IMXRT106X_INTERRUPTS: usize = 158;
 
-#[doc(hidden)]
-#[no_mangle]
-unsafe extern "C" fn DefaultHandler_() -> ! {
-    loop {
-        core::sync::atomic::spin_loop_hint();
-    }
-}
-
 #[inline(always)]
 unsafe fn set_priority(irqn: usize, priority: u8) {
     const INTERRUPT_PRIORITY_BASE: *mut u8 = 0xE000_E400 as *mut u8;
