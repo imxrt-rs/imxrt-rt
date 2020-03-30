@@ -57,7 +57,7 @@ pub fn entry(args: TokenStream, input: TokenStream) -> TokenStream {
         Ok(x) => x,
     };
 
-    f.sig.ident = Ident::new(&format!("__cortex_m_rt_{}", f.sig.ident), Span::call_site());
+    f.sig.ident = Ident::new(&format!("__imxrt_rt_{}", f.sig.ident), Span::call_site());
     f.sig.inputs.extend(statics.iter().map(|statik| {
         let ident = &statik.ident;
         let ty = &statik.ty;
@@ -182,7 +182,7 @@ pub fn exception(args: TokenStream, input: TokenStream) -> TokenStream {
                 .into();
             }
 
-            f.sig.ident = Ident::new(&format!("__cortex_m_rt_{}", f.sig.ident), Span::call_site());
+            f.sig.ident = Ident::new(&format!("__imxrt_rt_{}", f.sig.ident), Span::call_site());
             let tramp_ident = Ident::new(&format!("{}_trampoline", f.sig.ident), Span::call_site());
             let ident = &f.sig.ident;
 
@@ -239,7 +239,7 @@ pub fn exception(args: TokenStream, input: TokenStream) -> TokenStream {
                 .into();
             }
 
-            f.sig.ident = Ident::new(&format!("__cortex_m_rt_{}", f.sig.ident), Span::call_site());
+            f.sig.ident = Ident::new(&format!("__imxrt_rt_{}", f.sig.ident), Span::call_site());
             let tramp_ident = Ident::new(&format!("{}_trampoline", f.sig.ident), Span::call_site());
             let ident = &f.sig.ident;
 
@@ -251,7 +251,7 @@ pub fn exception(args: TokenStream, input: TokenStream) -> TokenStream {
                 #[doc(hidden)]
                 #[export_name = "HardFault"]
                 #[link_section = ".HardFault.user"]
-                pub unsafe extern "C" fn #tramp_ident(frame: &::cortex_m_rt::ExceptionFrame) {
+                pub unsafe extern "C" fn #tramp_ident(frame: &::imxrt_rt::ExceptionFrame) {
                     #ident(frame)
                 }
 
@@ -291,7 +291,7 @@ pub fn exception(args: TokenStream, input: TokenStream) -> TokenStream {
                 Ok(x) => x,
             };
 
-            f.sig.ident = Ident::new(&format!("__cortex_m_rt_{}", f.sig.ident), Span::call_site());
+            f.sig.ident = Ident::new(&format!("__imxrt_rt_{}", f.sig.ident), Span::call_site());
             f.sig.inputs.extend(statics.iter().map(|statik| {
                 let ident = &statik.ident;
                 let ty = &statik.ty;
@@ -398,7 +398,7 @@ pub fn interrupt(args: TokenStream, input: TokenStream) -> TokenStream {
         Ok(x) => x,
     };
 
-    f.sig.ident = Ident::new(&format!("__cortex_m_rt_{}", f.sig.ident), Span::call_site());
+    f.sig.ident = Ident::new(&format!("__imxrt_rt_{}", f.sig.ident), Span::call_site());
     f.sig.inputs.extend(statics.iter().map(|statik| {
         let ident = &statik.ident;
         let ty = &statik.ty;

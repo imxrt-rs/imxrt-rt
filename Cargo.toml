@@ -1,27 +1,48 @@
 [package]
-name = "imxrt-rt"
-version = "0.1.0"
-authors = ["Ian McIntyre <ianpmcintyre@gmail.com>", "Tom Burdick <tom.burdick@electromatic.us>"]
-edition = "2018"
+authors = [
+    "The Cortex-M Team <cortex-m@teams.rust-embedded.org>",
+    "Jorge Aparicio <jorge@japaric.io>",
+    "Hideki Sekine <sekineh@me.com>",
+    "Tom Burdick <tom.burdick@electromatic.us>",
+    "Ian McIntyre <ianpmcintyre@gmail.com>"
+]
+categories = ["embedded", "no-std"]
+description = "Minimal runtime / startup for NXP i.MX RT microcontrollers"
+documentation = "https://docs.rs/imxrt-rt/"
+keywords = ["arm", "cortex-m", "runtime", "startup"]
 license = "MIT OR Apache-2.0"
+name = "imxrt-rt"
+readme = "README.md"
 repository = "https://github.com/imxrt-rs/imxrt-rt"
-description = """
-Custom cortex-m-rt specifically for the iMXRT family of processors.
-Part of the imxrt-rs project, forked from teensy4-rs.
-"""
+version = "0.1.0"
+autoexamples = true
 
-# TODO if the changes in the cortex-m-rt-macros
-# crate are accepted upstream, use the normal
-# dependency.
 [dependencies]
+r0 = "0.2.2"
 cortex-m-rt-macros = { path = "macros", version = "=0.6.11" }
 
-[dependencies.cortex-m]
-version = "0.6.1"
+[dev-dependencies]
+cortex-m = "0.6"
+panic-halt = "0.2.0"
+cortex-m-semihosting = "0.3"
 
-[build-dependencies]
-cc = "1.0.48"
+[target.'cfg(not(target_os = "none"))'.dev-dependencies]
+compiletest_rs = "0.4.0"
 
-[lib]
-bench = false
-test = false
+[[example]]
+name = "device"
+required-features = ["device"]
+
+[[example]]
+name = "warnings"
+required-features = ["device"]
+
+[[test]]
+name = "compiletest"
+required-features = ["device"]
+
+[features]
+device = []
+
+[package.metadata.docs.rs]
+features = ["device"]

@@ -1,6 +1,7 @@
 **/*.rs.bk
 .#*
-.gdb_history
 Cargo.lock
+bin/*.after
+bin/*.before
+bin/*.o
 target/
-itm.txt
