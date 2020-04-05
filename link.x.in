@@ -59,15 +59,14 @@ PROVIDE(__pre_init = DefaultPreInit);
 /* # Sections */
 SECTIONS
 {
-  PROVIDE(_stack_start = ORIGIN(RAM) + LENGTH(RAM));
 
   /* ## Sections in FLASH */
   /* ### Vector table */
-  .vector_table ORIGIN(FLASH) :
+  .vector_table ORIGIN(ITCM) :
   {
     __vector_table = .;
-    /* Initial Stack Pointer (SP) value */
-    LONG(_stack_start);
+    /* Initial Stack Pointer (SP) value points at the end of the stack section */
+    LONG(__estack);
 
     /* Reset vector */
     KEEP(*(.vector_table.reset_vector)); /* this is the `__RESET_VECTOR` symbol */
@@ -79,7 +78,7 @@ SECTIONS
 
     /* Device specific interrupts */
     KEEP(*(.vector_table.interrupts)); /* this is the `__INTERRUPTS` symbol */
-  } > FLASH
+  } > REGION_TEXT
 
   PROVIDE(_stext = ADDR(.vector_table) + SIZEOF(.vector_table));
 
@@ -91,7 +90,7 @@ SECTIONS
     *(.HardFault.*);
     . = ALIGN(4);
     __etext = .;
-  } > FLASH
+  } > REGION_TEXT
 
   /* ### .rodata */
   .rodata __etext : ALIGN(4)
@@ -103,7 +102,7 @@ SECTIONS
        section will have the correct alignment. */
     . = ALIGN(4);
     __erodata = .;
-  } > FLASH
+  } > REGION_RODATA
 
   /* ## Sections in RAM */
   /* ### .data */
@@ -114,7 +113,7 @@ SECTIONS
     *(.data .data.*);
     . = ALIGN(4); /* 4-byte align the end (VMA) of this section */
     __edata = .;
-  } > RAM
+  } > REGION_DATA
 
   /* LMA of .data */
   __sidata = LOADADDR(.data);
@@ -127,15 +126,24 @@ SECTIONS
     *(.bss .bss.*);
     . = ALIGN(4); /* 4-byte align the end (VMA) of this section */
     __ebss = .;
-  } > RAM
+  } > REGION_BSS
 
+  .stack : ALIGN(4)
+  {
+    . = ALIGN(4);
+    __sstack = .;
+    . += STACK_SIZE;
+    . = ALIGN (4);
+    __estack = .;
+  } > REGION_STACK
+ 
   /* ### .uninit */
-  .uninit (NOLOAD) : ALIGN(4)
+  /*.uninit (NOLOAD) : ALIGN(4)
   {
     . = ALIGN(4);
     *(.uninit .uninit.*);
     . = ALIGN(4);
-  } > RAM
+  } > REGION_UNINIT */
 
   /* Place the heap right after `.uninit` */
   . = ALIGN(4);
@@ -157,58 +165,66 @@ SECTIONS
     *(.ARM.exidx.*);
     *(.ARM.extab.*);
   }
+
+
 }
 
 /* Do not exceed this mark in the error messages below                                    | */
 /* # Alignment checks */
 ASSERT(ORIGIN(FLASH) % 4 == 0, "
-ERROR(cortex-m-rt): the start of the FLASH region must be 4-byte aligned");
+ERROR(imxrt-rt): the start of the FLASH region must be 4-byte aligned");
 
-ASSERT(ORIGIN(RAM) % 4 == 0, "
-ERROR(cortex-m-rt): the start of the RAM region must be 4-byte aligned");
+ASSERT(ORIGIN(ITCM) % 4 == 0, "
+ERROR(imxrt-rt): the start of the ITCM region must be 4-byte aligned");
+
+ASSERT(ORIGIN(DTCM) % 4 == 0, "
+ERROR(imxrt-rt): the start of the DTCM region must be 4-byte aligned");
+
+ASSERT(ORIGIN(OCRAM) % 4 == 0, "
+ERROR(imxrt-rt): the start of the DTCM region must be 4-byte aligned");
 
 ASSERT(__sdata % 4 == 0 && __edata % 4 == 0, "
-BUG(cortex-m-rt): .data is not 4-byte aligned");
+BUG(imxrt-rt): .data is not 4-byte aligned");
 
 ASSERT(__sidata % 4 == 0, "
-BUG(cortex-m-rt): the LMA of .data is not 4-byte aligned");
+BUG(imxrt-rt): the LMA of .data is not 4-byte aligned");
 
 ASSERT(__sbss % 4 == 0 && __ebss % 4 == 0, "
-BUG(cortex-m-rt): .bss is not 4-byte aligned");
+BUG(imxrt-rt): .bss is not 4-byte aligned");
 
 ASSERT(__sheap % 4 == 0, "
-BUG(cortex-m-rt): start of .heap is not 4-byte aligned");
+BUG(imxrt-rt): start of .heap is not 4-byte aligned");
 
 /* # Position checks */
 
 /* ## .vector_table */
 ASSERT(__reset_vector == ADDR(.vector_table) + 0x8, "
-BUG(cortex-m-rt): the reset vector is missing");
+BUG(imxrt-rt): the reset vector is missing");
 
 ASSERT(__eexceptions == ADDR(.vector_table) + 0x40, "
-BUG(cortex-m-rt): the exception vectors are missing");
+BUG(imxrt-rt): the exception vectors are missing");
 
 ASSERT(SIZEOF(.vector_table) > 0x40, "
-ERROR(cortex-m-rt): The interrupt vectors are missing.
+ERROR(imxrt-rt): The interrupt vectors are missing.
 Possible solutions, from most likely to less likely:
 - Link to a svd2rust generated device crate
 - Check that you actually use the device/hal/bsp crate in your code
-- Disable the 'device' feature of cortex-m-rt to build a generic application (a dependency
+- Disable the 'device' feature of imxrt-rt to build a generic application (a dependency
 may be enabling it)
 - Supply the interrupt handlers yourself. Check the documentation for details.");
 
 /* ## .text */
 ASSERT(ADDR(.vector_table) + SIZEOF(.vector_table) <= _stext, "
-ERROR(cortex-m-rt): The .text section can't be placed inside the .vector_table section
+ERROR(imxrt-rt): The .text section can't be placed inside the .vector_table section
 Set _stext to an address greater than the end of .vector_table (See output of `nm`)");
 
 ASSERT(_stext + SIZEOF(.text) < ORIGIN(FLASH) + LENGTH(FLASH), "
-ERROR(cortex-m-rt): The .text section must be placed inside the FLASH memory.
+ERROR(imxrt-rt): The .text section must be placed inside the FLASH memory.
 Set _stext to an address smaller than 'ORIGIN(FLASH) + LENGTH(FLASH)'");
 
 /* # Other checks */
 ASSERT(SIZEOF(.got) == 0, "
-ERROR(cortex-m-rt): .got section detected in the input object files
+ERROR(imxrt-rt): .got section detected in the input object files
 Dynamic relocations are not supported. If you are linking to C code compiled using
 the 'cc' crate then modify your build script to compile the C code _without_
 the -fPIC flag. See the documentation of the `cc::Build.pic` method for details.");
