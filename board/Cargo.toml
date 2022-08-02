@@ -1,0 +1,47 @@
+[package]
+name = "board"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies.cfg-if]
+version = "1.0"
+
+[dependencies.imxrt-ral]
+version = "0.5"
+
+[dependencies.imxrt-rt]
+path = ".."
+
+[build-dependencies.imxrt-rt]
+path = ".."
+
+[target.'cfg(all(target_arch = "arm", target_os = "none"))'.dependencies]
+teensy4-fcb = { version = "0.3", optional = true }
+teensy4-panic = { version = "0.2", optional = true }
+
+imxrt1010evk-fcb = { version = "0.1", optional = true }
+imxrt1170evk-fcb = { version = "0.1", optional = true }
+rtt-target = { version = "0.3", optional = true, features = ["cortex-m"] }
+panic-rtt-target = { version = "0.1", optional = true, features = ["cortex-m"] }
+
+[features]
+rtic = []
+# Begin board features.
+teensy4 = [
+    "imxrt-ral/imxrt1062",
+    "dep:teensy4-fcb",
+    "dep:teensy4-panic",
+]
+imxrt1010evk = [
+    "imxrt-ral/imxrt1011",
+    "dep:imxrt1010evk-fcb",
+    "dep:rtt-target",
+    "dep:panic-rtt-target",
+]
+imxrt1170evk-cm7 = [
+    "imxrt-ral/imxrt1176_cm7",
+    "dep:imxrt1170evk-fcb",
+    "dep:rtt-target",
+    "dep:panic-rtt-target",
+]

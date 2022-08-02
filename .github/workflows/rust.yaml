@@ -1,0 +1,92 @@
+name: Rust CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+        components: rustfmt
+    - name: Check formatting
+      uses: actions-rs/cargo@v1
+      with:
+        command: fmt
+        args: --verbose --all -- --check
+
+  clippy:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+        components: clippy
+    - name: Lint the host API.
+      uses: actions-rs/clippy-check@v1
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        args: --package=imxrt-rt --tests
+
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+        target: thumbv7em-none-eabihf
+    - name: Run doc tests
+      uses: actions-rs/cargo@v1
+      with:
+        command: test
+        args: --doc
+    - name: Run automated tests
+      uses: actions-rs/cargo@v1
+      with:
+        command: test
+        args: --tests -- --include-ignored
+
+  boards:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        board: [ teensy4, imxrt1010evk, imxrt1170evk-cm7 ]
+    steps:
+    - uses: actions/checkout@v2
+    - uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+        target: thumbv7em-none-eabihf
+    - name: Lint the RTIC example for ${{ matrix.board }}
+      uses: actions-rs/clippy-check@v1
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        args: --example=blink-rtic --target=thumbv7em-none-eabihf --features=board/${{ matrix.board }},board/rtic -- -D warnings
+    - name: Lint the blocking example ${{ matrix.board }}
+      uses: actions-rs/clippy-check@v1
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        args: --example=blink-blocking --target=thumbv7em-none-eabihf --features=board/${{ matrix.board }} -- -D warnings
+
+  docs:
+    runs-on: ubuntu-latest
+    env:
+      RUSTDOCFLAGS: -D warnings
+    steps:
+    - uses: actions/checkout@v2
+    - uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+    - name: Check host documentation
+      uses: actions-rs/cargo@v1
+      with:
+        command: rustdoc
+        args: --package=imxrt-rt
