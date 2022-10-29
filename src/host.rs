@@ -3,6 +3,11 @@
 //! See [`RuntimeBuilder::build`] to understand the linker script generation
 //! steps.
 
+// Please explicitly match all `Family` variants. If someone wants to add
+// a new `Family`, this will show help them find all the settings they need
+// to consider.
+#![warn(clippy::wildcard_enum_match_arm)]
+
 use std::{
     env,
     fmt::Display,
@@ -54,10 +59,14 @@ pub enum FlexSpi {
 
 impl FlexSpi {
     fn family_default(family: Family) -> Self {
-        if Family::Imxrt1064 == family {
-            FlexSpi::FlexSpi2
-        } else {
-            FlexSpi::FlexSpi1
+        match family {
+            Family::Imxrt1064 => FlexSpi::FlexSpi2,
+            Family::Imxrt1010
+            | Family::Imxrt1015
+            | Family::Imxrt1020
+            | Family::Imxrt1050
+            | Family::Imxrt1060
+            | Family::Imxrt1170 => FlexSpi::FlexSpi1,
         }
     }
     fn start_address(self, family: Family) -> Option<u32> {
@@ -593,7 +602,11 @@ impl Family {
     fn fcb_offset(self) -> usize {
         match self {
             Family::Imxrt1010 | Family::Imxrt1170 => 0x400,
-            _ => 0x000,
+            Family::Imxrt1015
+            | Family::Imxrt1020
+            | Family::Imxrt1050
+            | Family::Imxrt1060
+            | Family::Imxrt1064 => 0x000,
         }
     }
 
@@ -601,13 +614,17 @@ impl Family {
     ///
     /// This includes dedicated any OCRAM regions, if any exist for the chip.
     fn ocram_start(self) -> u32 {
-        if Family::Imxrt1170 == self {
+        match self {
             // 256 KiB offset from the OCRAM M4 backdoor.
-            0x2024_0000
-        } else {
+            Family::Imxrt1170 => 0x2024_0000,
             // Either starts the FlexRAM OCRAM banks, or the
             // dedicated OCRAM regions (for supported devices).
-            0x2020_0000
+            Family::Imxrt1010
+            | Family::Imxrt1015
+            | Family::Imxrt1020
+            | Family::Imxrt1050
+            | Family::Imxrt1060
+            | Family::Imxrt1064 => 0x2020_0000,
         }
     }
 
