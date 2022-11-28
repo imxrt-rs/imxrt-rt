@@ -17,6 +17,15 @@
 //!   on the 1170 chips. It's also OK to keep the POR value, since it represents the maximum-possible
 //!   TCM size. This means that users have finer control over xTCM memory sizes, but invalid xTCM accesses
 //!   won't cause a bus fault. See 3.1.3.2. in AN12077 for more discussion.
+//!
+//! Other notes:
+//!
+//! It's important that something sets the stack pointer. On the 10xx, the boot ROM sets the stack
+//! pointer. But on the 11xx, the boot ROM doesn't set the stack pointer. See the link below for
+//! more information. This implementation relies on the cortex-m-rt 0.7.2 "set-sp" feature to always
+//! set the stack pointer, no matter the target chip.
+//!
+//! <https://community.nxp.com/t5/i-MX-RT/RT1176-ROM-code-does-not-set-stack-pointer-correctly/td-p/1388830>
 
 use core::{arch::global_asm, ffi::c_void};
 
@@ -58,22 +67,6 @@ __pre_init:
     orr r1, r1, #1<<2               @ r1 |= 1 << 2
     str r1, [r0, #64]               @ *(IMXRT_IOMUXC_GPR + 16) = r1
 
-    # Set the stack pointer.
-    #
-    # This is particularly important for the 11xx. Its boot ROM
-    # doesn't take this step before it calls into our reset
-    # handler. The 10xx boot ROM handles this differently.
-    # Also noted in
-    # https://community.nxp.com/t5/i-MX-RT/RT1176-ROM-code-does-not-set-stack-pointer-correctly/td-p/1388830
-    #
-    # If this feature is published in a future cortex-m-rt version,
-    # we could remove this. See below for VTOR, too.
-    #
-    # Shouldn't matter where we perform this within this function.
-    # We're assuming that the caller isn't using the stack.
-    ldr r0, =__sstack
-    msr msp, r0
-
     # Conditionally copy text.
     ldr r0, =__stext
     ldr r2, =__sitext
@@ -103,14 +96,6 @@ __pre_init:
     stm r0!, {{r3}}
     b 53b
     52:
-
-    # Set VTOR. If this feature is published in a future cortex-m-rt version,
-    # we could remove this.
-    ldr r0, =0xE000ED08
-    ldr r1, =__svector_table
-    str r1, [r0]
-    dsb
-    isb
 
     # Conditionally copy read-only data.
     ldr r0, =__srodata

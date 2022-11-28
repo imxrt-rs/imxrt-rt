@@ -122,7 +122,7 @@
 //!
 //! # Feature flags
 //!
-//! `imxrt-rt` supports the features available in `cortex-m-rt` version 0.7.1. If you enable a feature,
+//! `imxrt-rt` supports the features available in `cortex-m-rt` version 0.7.2. If you enable a feature,
 //! you must enable it in both the `[dependencies]` and `[build-dependencies]` section of your package
 //! manifest. For example, if the `cortex-m-rt` `"device"` feature were needed, then enable this crate's
 //! `"device"` feature in both places.
