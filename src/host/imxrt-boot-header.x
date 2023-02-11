@@ -1,4 +1,5 @@
-/* This extra file is injected into imxrt-memory.x depending on the
+/* ===--- Begin imxrt-boot-header.x ---===
+ * This extra content is injected into the linker script depending on the
  * runtime configuration.
  */
 
@@ -71,3 +72,5 @@ SECTIONS
     . = ORIGIN(FLASH) + 0x2000;   /* Reserve the remaining 8K as a convenience for a non-XIP boot. */
   } > FLASH
 }
+
+/* ===--- End imxrt-boot-header.x ---=== */

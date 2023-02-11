@@ -1,11 +1,7 @@
-/*
- * This linker script is a fork of the default linker script provided by
+/* ===--- Begin imxrt-link.x ---===
+ * This section of the linker script is a fork of the default linker script provided by
  * imxrt-rt, version 0.7.1. It's modified to support the needs of imxrt-rt.
  */
-
-/* Provides information about the memory layout of the device */
-/* This will be provided by the build script that uses imxrt-rt. */
-INCLUDE imxrt-memory.x
 
 /* # Entry point = reset vector */
 EXTERN(__RESET_VECTOR);
@@ -196,3 +192,5 @@ Dynamic relocations are not supported. If you are linking to C code compiled usi
 the 'cc' crate then modify your build script to compile the C code _without_
 the -fPIC flag. See the documentation of the `cc::Build.pic` method for details.");
 /* Do not exceed this mark in the error messages above                                    | */
+
+/* ===--- End imxrt-link.x ---=== */

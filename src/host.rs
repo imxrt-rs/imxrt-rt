@@ -11,7 +11,7 @@
 use std::{
     env,
     fmt::Display,
-    fs::{self, File},
+    fs,
     io::{self, Write},
     path::PathBuf,
 };
@@ -301,6 +301,9 @@ impl RuntimeBuilder {
 
     /// Commit the runtime configuration.
     ///
+    /// `build()` ensures that the generated linker script is available to the
+    /// linker.
+    ///
     /// # Errors
     ///
     /// The implementation ensures that your chip can support the FlexRAM bank
@@ -321,8 +324,6 @@ impl RuntimeBuilder {
     /// the linker. No matter the error path, the implementation ensures that there
     /// will be an error.
     pub fn build(&self) -> Result<(), Box<dyn std::error::Error>> {
-        self.check_configurations()?;
-
         // Since `build` is called from a build script, the output directory
         // represents the path to the _user's_ crate.
         let out_dir = PathBuf::from(env::var("OUT_DIR")?);
@@ -331,69 +332,87 @@ impl RuntimeBuilder {
         // The main linker script expects to INCLUDE this file. This file
         // uses region aliases to associate region names to actual memory
         // regions (see the Memory enum).
-        let mut memory_x = File::create(out_dir.join("imxrt-memory.x"))?;
+        let mut in_memory = Vec::new();
+        self.write_linker_script(&mut in_memory)?;
+        fs::write(out_dir.join(&self.linker_script_name), &in_memory)?;
+        Ok(())
+    }
+
+    /// Write the generated linker script into the provided writer.
+    ///
+    /// Use this if you want more control over where the generated linker script
+    /// ends up. Otherwise, you should prefer [`build()`](Self::build) for an
+    /// easier experience.
+    ///
+    /// Unlike `build()`, this method does not ensure that the linker script is
+    /// available to the linker. Additionally, this method does not consider
+    /// the value set by [`linker_script_name`](Self::linker_script_name).
+    ///
+    /// # Errors
+    ///
+    /// See [`build()`](Self::build) to understand the possible errors.
+    fn write_linker_script(
+        &self,
+        writer: &mut dyn Write,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        self.check_configurations()?;
 
         if let Some(flash_opts) = &self.flash_opts {
-            write_flash_memory_map(&mut memory_x, self.family, flash_opts, &self.flexram_banks)?;
+            write_flash_memory_map(writer, self.family, flash_opts, &self.flexram_banks)?;
+
+            let boot_header_x = include_bytes!("host/imxrt-boot-header.x");
+            writer.write_all(boot_header_x)?;
         } else {
-            write_ram_memory_map(&mut memory_x, self.family, &self.flexram_banks)?;
+            write_ram_memory_map(writer, self.family, &self.flexram_banks)?;
         }
 
         #[cfg(feature = "device")]
-        writeln!(&mut memory_x, "INCLUDE device.x")?;
+        writeln!(writer, "INCLUDE device.x")?;
 
         // Keep these alias names in sync with the primary linker script.
         // The main linker script uses these region aliases for placing
         // sections. Then, the user specifies the actual placement through
         // the builder. This saves us the step of actually generating SECTION
         // commands.
-        region_alias(&mut memory_x, "TEXT", self.text)?;
-        region_alias(&mut memory_x, "VTABLE", self.vectors)?;
-        region_alias(&mut memory_x, "RODATA", self.rodata)?;
-        region_alias(&mut memory_x, "DATA", self.data)?;
-        region_alias(&mut memory_x, "BSS", self.bss)?;
-        region_alias(&mut memory_x, "UNINIT", self.uninit)?;
+        region_alias(writer, "TEXT", self.text)?;
+        region_alias(writer, "VTABLE", self.vectors)?;
+        region_alias(writer, "RODATA", self.rodata)?;
+        region_alias(writer, "DATA", self.data)?;
+        region_alias(writer, "BSS", self.bss)?;
+        region_alias(writer, "UNINIT", self.uninit)?;
 
-        region_alias(&mut memory_x, "STACK", self.stack)?;
-        region_alias(&mut memory_x, "HEAP", self.heap)?;
+        region_alias(writer, "STACK", self.stack)?;
+        region_alias(writer, "HEAP", self.heap)?;
         // Used in the linker script and / or target code.
-        writeln!(&mut memory_x, "__stack_size = {:#010X};", self.stack_size)?;
-        writeln!(&mut memory_x, "__heap_size = {:#010X};", self.heap_size)?;
+        writeln!(writer, "__stack_size = {:#010X};", self.stack_size)?;
+        writeln!(writer, "__heap_size = {:#010X};", self.heap_size)?;
 
         if self.flash_opts.is_some() {
             // Runtime will see different VMA and LMA, and copy the sections.
-            region_alias(&mut memory_x, "LOAD_VTABLE", Memory::Flash)?;
-            region_alias(&mut memory_x, "LOAD_TEXT", Memory::Flash)?;
-            region_alias(&mut memory_x, "LOAD_RODATA", Memory::Flash)?;
-            region_alias(&mut memory_x, "LOAD_DATA", Memory::Flash)?;
+            region_alias(writer, "LOAD_VTABLE", Memory::Flash)?;
+            region_alias(writer, "LOAD_TEXT", Memory::Flash)?;
+            region_alias(writer, "LOAD_RODATA", Memory::Flash)?;
+            region_alias(writer, "LOAD_DATA", Memory::Flash)?;
         } else {
             // When the VMA and LMA are equal, the runtime performs no copies.
-            region_alias(&mut memory_x, "LOAD_VTABLE", self.vectors)?;
-            region_alias(&mut memory_x, "LOAD_TEXT", self.text)?;
-            region_alias(&mut memory_x, "LOAD_RODATA", self.rodata)?;
-            region_alias(&mut memory_x, "LOAD_DATA", self.data)?;
+            region_alias(writer, "LOAD_VTABLE", self.vectors)?;
+            region_alias(writer, "LOAD_TEXT", self.text)?;
+            region_alias(writer, "LOAD_RODATA", self.rodata)?;
+            region_alias(writer, "LOAD_DATA", self.data)?;
         }
 
         // Referenced in target code.
         writeln!(
-            &mut memory_x,
+            writer,
             "__flexram_config = {:#010X};",
             self.flexram_banks.config()
         )?;
         // The target runtime looks at this value to predicate some pre-init instructions.
         // Could be helpful for binary identification, but it's an undocumented feature.
-        writeln!(&mut memory_x, "__imxrt_family = {};", self.family.id(),)?;
+        writeln!(writer, "__imxrt_family = {};", self.family.id(),)?;
 
-        // Place the primary linker script in the user's output directory. Name may be decided
-        // by the user.
         let link_x = include_bytes!("host/imxrt-link.x");
-        fs::write(out_dir.join(&self.linker_script_name), link_x)?;
-
-        // Also place the boot header in the search path. Do this unconditionally (even if
-        // the user is booting from RAM). Name matters, since it's INCLUDEd in our linker
-        // scripts.
-        let boot_header_x = include_bytes!("host/imxrt-boot-header.x");
-        fs::write(out_dir.join("imxrt-boot-header.x"), boot_header_x)?;
+        writer.write_all(link_x)?;
 
         Ok(())
     }
@@ -490,9 +509,6 @@ fn write_flexram_memories(
 }
 
 /// Generate a linker script MEMORY command that includes a FLASH block.
-///
-/// If called, the linker script includes the boot header, which is also
-/// expressed as a linker script.
 fn write_flash_memory_map(
     output: &mut dyn Write,
     family: Family,
@@ -517,7 +533,6 @@ fn write_flash_memory_map(
     write_flexram_memories(output, family, flexram_banks)?;
     writeln!(output, "}}")?;
     writeln!(output, "__fcb_offset = {:#X};", family.fcb_offset())?;
-    writeln!(output, "INCLUDE imxrt-boot-header.x")?;
     Ok(())
 }
 
@@ -739,7 +754,21 @@ impl FlexRamBanks {
 
 #[cfg(test)]
 mod tests {
-    use super::FlexRamBanks;
+    use crate::Memory;
+
+    use super::{Family, FlexRamBanks, RuntimeBuilder};
+    use std::{error, io};
+
+    const ALL_FAMILIES: &[Family] = &[
+        Family::Imxrt1010,
+        Family::Imxrt1015,
+        Family::Imxrt1020,
+        Family::Imxrt1050,
+        Family::Imxrt1060,
+        Family::Imxrt1064,
+        Family::Imxrt1170,
+    ];
+    type Error = Box<dyn error::Error>;
 
     #[test]
     fn flexram_config() {
@@ -834,6 +863,63 @@ mod tests {
                 actual == *expected,
                 "\nActual:   {actual:#034b}\nExpected: {expected:#034b}\nBanks: {banks:?}"
             );
+        }
+    }
+
+    #[test]
+    fn runtime_builder_default_from_flexspi() -> Result<(), Error> {
+        for family in ALL_FAMILIES {
+            RuntimeBuilder::from_flexspi(*family, 16 * 1024 * 1024)
+                .write_linker_script(&mut io::sink())?;
+        }
+        Ok(())
+    }
+
+    /// Strange but currently allowed.
+    #[test]
+    fn runtime_builder_from_flexspi_no_flash() -> Result<(), Error> {
+        RuntimeBuilder::from_flexspi(Family::Imxrt1060, 0).write_linker_script(&mut io::sink())
+    }
+
+    #[test]
+    fn runtime_builder_too_many_flexram_banks() {
+        let banks = FlexRamBanks {
+            itcm: 32,
+            dtcm: 32,
+            ocram: 32,
+        };
+        for family in ALL_FAMILIES {
+            let res = RuntimeBuilder::from_flexspi(*family, 16 * 1024)
+                .flexram_banks(banks)
+                .write_linker_script(&mut io::sink());
+            assert!(res.is_err(), "{family:?}");
+        }
+    }
+
+    #[test]
+    fn runtime_builder_invalid_flash_section() {
+        type Placer = fn(&mut RuntimeBuilder) -> &mut RuntimeBuilder;
+        macro_rules! placement {
+            ($section:ident) => {
+                (|bldr| bldr.$section(Memory::Flash), stringify!($section))
+            };
+        }
+        let placements: &[(Placer, &'static str)] = &[
+            placement!(data),
+            placement!(vectors),
+            placement!(bss),
+            placement!(uninit),
+            placement!(stack),
+            placement!(heap),
+        ];
+
+        for family in ALL_FAMILIES {
+            for placement in placements {
+                let mut bldr = RuntimeBuilder::from_flexspi(*family, 16 * 1024);
+                placement.0(&mut bldr);
+                let res = bldr.write_linker_script(&mut io::sink());
+                assert!(res.is_err(), "{:?}, section: {}", family, placement.1);
+            }
         }
     }
 }
