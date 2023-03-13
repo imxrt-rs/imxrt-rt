@@ -328,6 +328,7 @@ fn imxrt1010evk() {
         0x6000_0000 < increment_data_xip && increment_data_xip < 0x7000_0000,
         "increment_data is not XiP"
     );
+    assert!(binary.symbol("Reset").is_some());
 }
 
 #[test]
@@ -433,6 +434,7 @@ fn imxrt1010evk_ram() {
     );
     assert_eq!(heap.size, 1024);
     assert_eq!(binary.section_lma(".heap"), heap.address, "Heap is NOLOAD");
+    assert!(binary.symbol("Reset").is_some());
 }
 
 fn baseline_teensy4(binary: &ImxrtBinary, dcd_at_runtime: u32, stack_size: u64, heap_size: u64) {
@@ -556,6 +558,7 @@ fn baseline_teensy4(binary: &ImxrtBinary, dcd_at_runtime: u32, stack_size: u64, 
         0x6000_0000 < increment_data_xip && increment_data_xip < 0x7000_0000,
         "increment_data is not XiP"
     );
+    assert!(binary.symbol("Reset").is_some());
 }
 
 #[test]
@@ -771,6 +774,7 @@ fn imxrt1170evk_cm7() {
         0x3000_0000 < increment_data_xip && increment_data_xip < 0x4000_0000,
         "increment_data is not XiP"
     );
+    assert!(binary.symbol("Reset").is_some());
 }
 
 #[test]
@@ -902,4 +906,5 @@ fn imxrt1170evk_cm7_nonboot() {
         "0 byte heap in DTCM behind rodata table"
     );
     assert_eq!(binary.section_lma(".heap"), heap.address, "Heap is NOLOAD");
+    assert!(binary.symbol("Reset").is_some());
 }
