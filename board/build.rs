@@ -60,6 +60,13 @@ fn main() {
                 .heap_size_env_override("BOARD_HEAP")
                 .build()
                 .unwrap(),
+            "imxrt1010evk_ram" => {
+                imxrt_rt::RuntimeBuilder::from_ram(imxrt_rt::Family::Imxrt1010)
+                    .heap_size(1024)
+                    .build()
+                    .unwrap();
+                println!("cargo:rustc-cfg=from_ram");
+            }
             _ => continue,
         }
         break;

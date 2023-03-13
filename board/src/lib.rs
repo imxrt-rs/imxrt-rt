@@ -10,7 +10,7 @@ cfg_if::cfg_if! {
 
         mod teensy4;
         pub use teensy4::*;
-    } else if #[cfg(feature = "imxrt1010evk")] {
+    } else if #[cfg(any(feature = "imxrt1010evk", feature = "imxrt1010evk-ram"))] {
         mod shared { pub mod imxrt10xx; }
         use shared::imxrt10xx::prepare_pit;
 

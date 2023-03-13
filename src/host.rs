@@ -401,6 +401,27 @@ impl RuntimeBuilder {
             linker_script_name: DEFAULT_LINKER_SCRIPT_NAME.into(),
         }
     }
+
+    /// Create a runtime that executes from RAM.
+    pub fn from_ram(family: Family) -> Self {
+        Self {
+            family,
+            flexram_banks: family.default_flexram_banks(),
+            text: Memory::Itcm,
+            rodata: Memory::Ocram,
+            data: Memory::Ocram,
+            vectors: Memory::Dtcm,
+            bss: Memory::Ocram,
+            uninit: Memory::Ocram,
+            stack: Memory::Dtcm,
+            stack_size: EnvOverride::new(8 * 1024),
+            heap: Memory::Dtcm,
+            heap_size: EnvOverride::new(0),
+            flash_opts: None,
+            linker_script_name: DEFAULT_LINKER_SCRIPT_NAME.into(),
+        }
+    }
+
     /// Set the FlexRAM bank allocation.
     ///
     /// Use this to customize the sizes of DTCM, ITCM, and OCRAM.

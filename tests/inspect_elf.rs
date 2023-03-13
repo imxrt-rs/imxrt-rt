@@ -197,6 +197,8 @@ struct Section {
     size: u64,
 }
 
+// No top-level constant for OCRAM, since placement varies
+// across 1000 and 1100 MCUs.
 const DTCM: u64 = 0x2000_0000;
 const ITCM: u64 = 0x0000_0020;
 
@@ -326,6 +328,111 @@ fn imxrt1010evk() {
         0x6000_0000 < increment_data_xip && increment_data_xip < 0x7000_0000,
         "increment_data is not XiP"
     );
+}
+
+#[test]
+#[ignore = "building an example can take time"]
+fn imxrt1010evk_ram() {
+    let path = cargo_build("imxrt1010evk-ram").expect("Unable to build example");
+    let contents = fs::read(path).expect("Could not read ELF file");
+    let elf = Elf::parse(&contents).expect("Could not parse ELF");
+
+    let binary = ImxrtBinary::new(&elf, &contents);
+
+    let stack = binary.section(".stack").unwrap();
+    assert_eq!(
+        Section {
+            address: DTCM,
+            size: 8 * 1024
+        },
+        stack,
+        "stack not at ORIGIN(DTCM), or not 8 KiB large"
+    );
+    assert_eq!(binary.section_lma(".stack"), stack.address);
+
+    let vector_table = binary.section(".vector_table").unwrap();
+    assert_eq!(
+        Section {
+            address: stack.address + stack.size,
+            size: 16 * 4 + 240 * 4
+        },
+        vector_table,
+        "vector table not at expected VMA behind the stack"
+    );
+    assert!(
+        vector_table.address.is_multiple_of(1024),
+        "vector table is not 1024-byte aligned"
+    );
+    assert_eq!(
+        binary.section_lma(".vector_table"),
+        stack.address + stack.size,
+        "vector_table LMA == VMA for RAM boot",
+    );
+
+    let xip = binary.section(".xip").unwrap();
+    let text = binary.section(".text").unwrap();
+    assert_eq!(text.address, aligned(ITCM + xip.size, 4), "text");
+    assert_eq!(
+        binary.section_lma(".text"),
+        aligned(ITCM + xip.size, 4),
+        "text LMA == VMA for RAM boot"
+    );
+
+    let rodata = binary.section(".rodata").unwrap();
+    assert_eq!(rodata.address, 0x2020_0000, "rodata VMA in OCRAM");
+    assert_eq!(
+        rodata.address,
+        binary.section_lma(".rodata"),
+        "rodata LMA == VMA for RAM boot"
+    );
+
+    let data = binary.section(".data").unwrap();
+    assert_eq!(
+        data.address,
+        rodata.address + aligned(rodata.size, 4),
+        "data VMA in OCRAM behind rodata"
+    );
+    assert_eq!(
+        data.size, 4,
+        "blink-rtic expected to have a single static mut u32"
+    );
+    assert_eq!(
+        binary.section_lma(".data"),
+        rodata.address + aligned(rodata.size, 4),
+        "data LMA == VMA for RAM boot"
+    );
+
+    let bss = binary.section(".bss").unwrap();
+    assert_eq!(
+        bss.address,
+        data.address + aligned(data.size, 4),
+        "bss in OCRAM behind data"
+    );
+    assert_eq!(binary.section_lma(".bss"), bss.address, "bss is NOLOAD");
+
+    let uninit = binary.section(".uninit").unwrap();
+    assert_eq!(
+        uninit.address,
+        bss.address + aligned(bss.size, 4),
+        "uninit in OCRAM behind bss"
+    );
+    assert_eq!(
+        binary.section_lma(".uninit"),
+        uninit.address,
+        "uninit is NOLOAD"
+    );
+
+    let heap = binary.section(".heap").unwrap();
+    assert_eq!(
+        Section {
+            address: vector_table.address + vector_table.size,
+            size: 1024
+        },
+        heap,
+        "1 KiB heap in DTCM behind vector table"
+    );
+    assert_eq!(heap.size, 1024);
+    assert_eq!(binary.section_lma(".heap"), heap.address, "Heap is NOLOAD");
 }
 
 fn baseline_teensy4(binary: &ImxrtBinary, dcd_at_runtime: u32, stack_size: u64, heap_size: u64) {

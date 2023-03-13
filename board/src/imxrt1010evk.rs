@@ -2,7 +2,7 @@
 
 use crate::ral;
 
-#[cfg(target_arch = "arm")]
+#[cfg(all(target_arch = "arm", not(feature = "imxrt1010evk-ram")))]
 use imxrt1010evk_fcb as _;
 #[cfg(target_arch = "arm")]
 use panic_rtt_target as _;
