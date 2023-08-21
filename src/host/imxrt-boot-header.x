@@ -53,7 +53,7 @@ SECTIONS
     LONG(0x402000D1);           /* Header, magic number */
     LONG(__sivector_table);     /* Address of the vectors table */
     LONG(0x00000000);           /* RESERVED */
-    LONG(0x00000000);           /* Device Configuration Data (unused) */
+    LONG(__dcd);                /* Device Configuration Data */
     LONG(__boot_data);          /* Address to boot data */
     LONG(__ivt);                /* Self reference */
     LONG(0x00000000);           /* Command Sequence File (unused) */
@@ -67,6 +67,11 @@ SECTIONS
     LONG(__image_size);         /* Length of image */
     LONG(0x00000000);           /* Plugin flag (unused) */
     LONG(0xDEADBEEF);           /* Dummy to align boot data to 16 bytes */
+    . = ALIGN(4);
+    __dcd_start = .;
+    KEEP(*(.dcd));              /* Device Configuration Data */
+    __dcd_end = .;
+    __dcd = ((__dcd_end - __dcd_start) > 0) ? __dcd_start : 0;
     *(.Reset);                  /* Jam the imxrt-rt reset handler into flash. */
     *(.__pre_init);             /* Also jam the pre-init function, since we need it to run before instructions are placed. */
     . = ORIGIN(FLASH) + 0x2000;   /* Reserve the remaining 8K as a convenience for a non-XIP boot. */

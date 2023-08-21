@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+Add section for device configuration data (DCD) in linker script. Users
+can place their DCD in a section called `.dcd`. Consider using imxrt-dcd
+as a convenient way to define a DCD.
+
 ## [0.1.1] 2023-02-14
 
 Update to cortex-m-rt 0.7.3 to avoid certain miscompilation opportunities.

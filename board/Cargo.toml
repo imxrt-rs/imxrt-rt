@@ -45,3 +45,8 @@ imxrt1170evk-cm7 = [
     "dep:rtt-target",
     "dep:panic-rtt-target",
 ]
+
+# Dummy boards for testing DCD linking.
+# Don't try running these on hardware; they might not work.
+__dcd = ["teensy4"]
+__dcd_missize = ["teensy4"]

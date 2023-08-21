@@ -12,7 +12,7 @@ type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
 /// Build an example, returning a path to the ELF.
 fn cargo_build(board: &str) -> Result<PathBuf> {
-    Command::new("cargo")
+    let status = Command::new("cargo")
         .arg("build")
         .arg("--example=blink-rtic")
         .arg(format!("--features=board/{},board/rtic", board))
@@ -21,6 +21,15 @@ fn cargo_build(board: &str) -> Result<PathBuf> {
         .arg("--quiet")
         .spawn()?
         .wait()?;
+
+    // TODO(summivox): `ExitStatus::exit_ok()` stabilization (can be chained after the `.wait()?)
+    if !status.success() {
+        return Err(format!(
+            "Building board '{}' failed: process returned {:?}",
+            board, status,
+        )
+        .into());
+    }
 
     let path = PathBuf::from(format!(
         "target/{}/thumbv7em-none-eabihf/debug/examples/blink-rtic",
@@ -31,11 +40,23 @@ fn cargo_build(board: &str) -> Result<PathBuf> {
 
 struct ImxrtBinary<'a> {
     elf: &'a Elf<'a>,
+    contents: &'a [u8],
+}
+
+/// Image vector table.
+///
+/// Not to be confused with the ARM vector table. See the linker
+/// script for more information.
+struct Ivt {
+    magic_header: u32,
+    interrupt_vector_table: u32,
+    device_configuration_data: u32,
+    boot_data: u32,
 }
 
 impl<'a> ImxrtBinary<'a> {
-    fn new(elf: &'a Elf<'a>) -> Self {
-        Self { elf }
+    fn new(elf: &'a Elf<'a>, contents: &'a [u8]) -> Self {
+        Self { elf, contents }
     }
 
     fn symbol(&self, symbol_name: &str) -> Option<goblin::elf::Sym> {
@@ -45,6 +66,10 @@ impl<'a> ImxrtBinary<'a> {
             .flat_map(|sym| self.elf.strtab.get_at(sym.st_name).map(|name| (sym, name)))
             .find(|(_, name)| symbol_name == *name)
             .map(|(sym, _)| sym)
+    }
+
+    fn symbol_value(&self, symbol_name: &str) -> Option<u64> {
+        self.symbol(symbol_name).map(|sym| sym.st_value)
     }
 
     fn fcb(&self) -> Result<Fcb> {
@@ -58,13 +83,35 @@ impl<'a> ImxrtBinary<'a> {
             })
     }
 
+    fn read_u32(&self, offset: usize) -> u32 {
+        u32::from_le_bytes(self.contents[offset..offset + 4].try_into().unwrap())
+    }
+
+    fn ivt(&self) -> Result<Ivt> {
+        let ivt_at_runtime = self
+            .symbol_value("__ivt")
+            .ok_or_else(|| String::from("Could not find __ivt symbol"))?;
+        let (boot_section_offset, boot_section_at_runtime) = self
+            .section_header(".boot")
+            .map(|sec| (sec.sh_offset, sec.sh_addr))
+            .ok_or_else(|| String::from("Could not find '.boot' section"))?;
+        let ivt_offset =
+            (boot_section_offset + (ivt_at_runtime - boot_section_at_runtime)) as usize;
+        Ok(Ivt {
+            magic_header: self.read_u32(ivt_offset),
+            interrupt_vector_table: self.read_u32(ivt_offset + 4),
+            device_configuration_data: self.read_u32(ivt_offset + 12),
+            boot_data: self.read_u32(ivt_offset + 16),
+        })
+    }
+
     fn flexram_config(&self) -> Result<u64> {
         self.symbol("__flexram_config")
             .map(|sym| sym.st_value)
             .ok_or_else(|| String::from("Could not find FlexRAM configuration in program").into())
     }
 
-    fn section(&self, section_name: &str) -> Result<Section> {
+    fn section_header(&self, section_name: &str) -> Option<&goblin::elf::SectionHeader> {
         self.elf
             .section_headers
             .iter()
@@ -75,7 +122,12 @@ impl<'a> ImxrtBinary<'a> {
                     .map(|name| (sec, name))
             })
             .find(|(_, name)| section_name == *name)
-            .map(|(sec, _)| Section {
+            .map(|(sec, _)| sec)
+    }
+
+    fn section(&self, section_name: &str) -> Result<Section> {
+        self.section_header(section_name)
+            .map(|sec| Section {
                 address: sec.sh_addr,
                 size: sec.sh_size,
             })
@@ -121,7 +173,11 @@ fn imxrt1010evk() {
     let contents = fs::read(path).expect("Could not read ELF file");
     let elf = Elf::parse(&contents).expect("Could not parse ELF");
 
-    let binary = ImxrtBinary::new(&elf);
+    let binary = ImxrtBinary::new(&elf, &contents);
+    assert_eq!(
+        binary.symbol_value("__dcd_start"),
+        binary.symbol_value("__dcd_end")
+    );
     assert_eq!(
         Fcb {
             address: 0x6000_0400,
@@ -130,6 +186,15 @@ fn imxrt1010evk() {
         binary.fcb().unwrap()
     );
     assert_eq!(binary.flexram_config().unwrap(), 0b11_10_0101);
+
+    let ivt = binary.ivt().unwrap();
+    assert_eq!(ivt.magic_header, 0x402000D1);
+    assert_eq!(ivt.interrupt_vector_table, 0x6000_2000);
+    assert_eq!(ivt.device_configuration_data, 0);
+    assert_eq!(
+        ivt.boot_data as u64,
+        binary.symbol_value("__ivt").unwrap() + 32
+    );
 
     let stack = binary.section(".stack").unwrap();
     assert_eq!(
@@ -218,14 +283,7 @@ fn imxrt1010evk() {
     assert_eq!(binary.section_lma(&heap), heap.address, "Heap is NOLOAD");
 }
 
-#[test]
-#[ignore = "building an example can take time"]
-fn teensy4() {
-    let path = cargo_build("teensy4").expect("Unable to build example");
-    let contents = fs::read(path).expect("Could not read ELF file");
-    let elf = Elf::parse(&contents).expect("Could not parse ELF");
-
-    let binary = ImxrtBinary::new(&elf);
+fn baseline_teensy4(binary: &ImxrtBinary, dcd_at_runtime: u32) {
     assert_eq!(
         Fcb {
             address: 0x6000_0000,
@@ -236,6 +294,15 @@ fn teensy4() {
     assert_eq!(
         binary.flexram_config().unwrap(),
         0b11111111_101010101010101010101010
+    );
+
+    let ivt = binary.ivt().unwrap();
+    assert_eq!(ivt.magic_header, 0x402000D1);
+    assert_eq!(ivt.interrupt_vector_table, 0x6000_2000);
+    assert_eq!(ivt.device_configuration_data, dcd_at_runtime);
+    assert_eq!(
+        ivt.boot_data as u64,
+        binary.symbol_value("__ivt").unwrap() + 32
     );
 
     let stack = binary.section(".stack").unwrap();
@@ -337,12 +404,64 @@ fn teensy4() {
 
 #[test]
 #[ignore = "building an example can take time"]
+fn teensy4() {
+    let path = cargo_build("teensy4").expect("Unable to build example");
+    let contents = fs::read(path).expect("Could not read ELF file");
+    let elf = Elf::parse(&contents).expect("Could not parse ELF");
+
+    let binary = ImxrtBinary::new(&elf, &contents);
+    assert!(binary.symbol("DEVICE_CONFIGURATION_DATA").is_none());
+    assert_eq!(
+        binary.symbol_value("__dcd_start"),
+        binary.symbol_value("__dcd_end")
+    );
+    assert_eq!(binary.symbol_value("__dcd"), Some(0));
+    baseline_teensy4(&binary, 0);
+}
+
+#[test]
+#[ignore = "building an example can take time"]
+fn teensy4_fake_dcd() {
+    let path = cargo_build("__dcd").expect("Unable to build example");
+    let contents = fs::read(path).expect("Could not read ELF file");
+    let elf = Elf::parse(&contents).expect("Could not parse ELF");
+
+    let binary = ImxrtBinary::new(&elf, &contents);
+    let dcd = binary.symbol("DEVICE_CONFIGURATION_DATA").unwrap();
+    let dcd_start = binary.symbol_value("__dcd_start").unwrap();
+    assert_eq!(
+        Some(dcd_start + dcd.st_size),
+        binary.symbol_value("__dcd_end"),
+    );
+    assert_eq!(
+        binary.symbol_value("__dcd"),
+        binary.symbol_value("__dcd_start"),
+    );
+    assert_eq!(dcd.st_size % 4, 0);
+    baseline_teensy4(&binary, dcd_start as u32);
+}
+
+#[test]
+#[ignore = "building an example can take time"]
+fn teensy4_fake_dcd_missize_fail() {
+    cargo_build("__dcd_missize").expect_err("Build should fail for missized DCD section.");
+    eprintln!();
+    eprintln!("NOTE: Linker failures above are intentional --- this test has succeeded.");
+}
+
+#[test]
+#[ignore = "building an example can take time"]
 fn imxrt1170evk_cm7() {
     let path = cargo_build("imxrt1170evk-cm7").expect("Unable to build example");
     let contents = fs::read(path).expect("Could not read ELF file");
     let elf = Elf::parse(&contents).expect("Could not parse ELF");
 
-    let binary = ImxrtBinary::new(&elf);
+    let binary = ImxrtBinary::new(&elf, &contents);
+    assert_eq!(
+        binary.symbol_value("__dcd_start"),
+        binary.symbol_value("__dcd_end")
+    );
+    assert_eq!(binary.symbol_value("__dcd"), Some(0));
     assert_eq!(
         Fcb {
             address: 0x3000_0400,
@@ -353,6 +472,15 @@ fn imxrt1170evk_cm7() {
     assert_eq!(
         binary.flexram_config().unwrap(),
         0b1111111111111111_1010101010101010
+    );
+
+    let ivt = binary.ivt().unwrap();
+    assert_eq!(ivt.magic_header, 0x402000D1);
+    assert_eq!(ivt.interrupt_vector_table, 0x3000_2000);
+    assert_eq!(ivt.device_configuration_data, 0);
+    assert_eq!(
+        ivt.boot_data as u64,
+        binary.symbol_value("__ivt").unwrap() + 32
     );
 
     let stack = binary.section(".stack").unwrap();
