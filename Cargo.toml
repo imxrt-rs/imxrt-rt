@@ -54,6 +54,3 @@ codegen-units = 256
 [profile.release.build-override]
 opt-level = 0
 codegen-units = 256
-
-[patch.crates-io.imxrt-ral]
-git = "https://github.com/mciantyre/imxrt-ral"
