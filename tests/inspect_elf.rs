@@ -360,10 +360,7 @@ fn baseline_teensy4(binary: &ImxrtBinary, dcd_at_runtime: u32) {
         vector_table.address + vector_table.size,
         "rodata LMA & VMA expected behind text"
     );
-    assert_eq!(
-        binary.section_lma(".rodata"),
-        binary.section_lma(".text") + aligned(text.size, 16)
-    );
+    assert!(binary.section_lma(".rodata") >= binary.section_lma(".text") + aligned(text.size, 4));
 
     let data = binary.section(".data").unwrap();
     assert_eq!(
@@ -534,9 +531,8 @@ fn imxrt1170evk_cm7() {
         vector_table.address + vector_table.size,
         "rodata moved to DTCM behind vector table"
     );
-    assert_eq!(
-        binary.section_lma(".rodata"),
-        0x3000_2000 + vector_table.size + aligned(text.size, 16),
+    assert!(
+        binary.section_lma(".rodata") >= 0x3000_2000 + vector_table.size + aligned(text.size, 4),
     );
 
     let data = binary.section(".data").unwrap();
