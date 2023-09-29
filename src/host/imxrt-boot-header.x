@@ -71,7 +71,7 @@ SECTIONS
     __dcd_start = .;
     KEEP(*(.dcd));              /* Device Configuration Data */
     __dcd_end = .;
-    __dcd = ((__dcd_end - __dcd_start) > 0) ? __dcd_start : 0;
+    __dcd = ((__dcd_end - __dcd_start) > 0) ? __dcd_start : ABSOLUTE(0);
     *(.Reset);                  /* Jam the imxrt-rt reset handler into flash. */
     *(.__pre_init);             /* Also jam the pre-init function, since we need it to run before instructions are placed. */
     . = ORIGIN(FLASH) + 0x2000;   /* Reserve the remaining 8K as a convenience for a non-XIP boot. */
