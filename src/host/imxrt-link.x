@@ -15,6 +15,7 @@ ENTRY(Reset);
 EXTERN(__EXCEPTIONS); /* depends on all the these PROVIDED symbols */
 
 EXTERN(DefaultHandler);
+EXTERN(__pre_init);
 
 PROVIDE(NonMaskableInt = DefaultHandler);
 EXTERN(HardFaultTrampoline);

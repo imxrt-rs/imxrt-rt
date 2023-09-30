@@ -53,6 +53,15 @@ jobs:
       with:
         command: test
         args: --tests -- --include-ignored
+    - name: Install ARM GCC
+      run: sudo apt-get update && sudo apt-get install -y gcc-arm-none-eabi
+    - name: Check binaries that are linked with GNU's ld
+      env:
+        CARGO_TARGET_THUMBV7EM_NONE_EABIHF_RUSTFLAGS: "-C linker=arm-none-eabi-gcc -C link-arg=-mcpu=cortex-m7 -C link-arg=-mfloat-abi=hard -C link-arg=-mfpu=fpv5-d16 -C link-arg=-nostartfiles"
+      uses: actions-rs/cargo@v1
+      with:
+        command: test
+        args: --tests -- --ignored
 
   boards:
     runs-on: ubuntu-latest
