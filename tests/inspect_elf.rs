@@ -10,8 +10,8 @@ use std::{fs, path::PathBuf, process::Command};
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
-/// Build an example, returning a path to the ELF.
-fn cargo_build(board: &str) -> Result<PathBuf> {
+/// Build an example with optional environment variables, returning a path to the ELF.
+fn cargo_build_with_envs(board: &str, envs: &[(&str, &str)]) -> Result<PathBuf> {
     let status = Command::new("cargo")
         .arg("build")
         .arg("--example=blink-rtic")
@@ -19,6 +19,7 @@ fn cargo_build(board: &str) -> Result<PathBuf> {
         .arg("--target=thumbv7em-none-eabihf")
         .arg(format!("--target-dir=target/{}", board))
         .arg("--quiet")
+        .envs(envs.iter().copied())
         .spawn()?
         .wait()?;
 
@@ -36,6 +37,11 @@ fn cargo_build(board: &str) -> Result<PathBuf> {
         board
     ));
     Ok(path)
+}
+
+/// Build an example, returning a path to the ELF.
+fn cargo_build(board: &str) -> Result<PathBuf> {
+    cargo_build_with_envs(board, &[])
 }
 
 struct ImxrtBinary<'a> {
@@ -294,7 +300,7 @@ fn imxrt1010evk() {
     assert_eq!(binary.section_lma(".heap"), heap.address, "Heap is NOLOAD");
 }
 
-fn baseline_teensy4(binary: &ImxrtBinary, dcd_at_runtime: u32) {
+fn baseline_teensy4(binary: &ImxrtBinary, dcd_at_runtime: u32, stack_size: u64, heap_size: u64) {
     assert_eq!(
         Fcb {
             address: 0x6000_0000,
@@ -320,10 +326,10 @@ fn baseline_teensy4(binary: &ImxrtBinary, dcd_at_runtime: u32) {
     assert_eq!(
         Section {
             address: DTCM,
-            size: 8 * 1024
+            size: stack_size
         },
         stack,
-        "stack not at ORIGIN(DTCM), or not 8 KiB large"
+        "stack not at ORIGIN(DTCM), or not {stack_size} bytes large"
     );
     assert_eq!(binary.section_lma(".stack"), stack.address);
 
@@ -402,10 +408,10 @@ fn baseline_teensy4(binary: &ImxrtBinary, dcd_at_runtime: u32) {
     assert_eq!(
         Section {
             address: uninit.address + aligned(uninit.size, 4),
-            size: 1024
+            size: heap_size
         },
         heap,
-        "1 KiB heap in DTCM behind uninit"
+        "{heap_size} byte heap in DTCM behind uninit"
     );
     assert_eq!(binary.section_lma(".heap"), heap.address, "Heap is NOLOAD");
 }
@@ -424,7 +430,7 @@ fn teensy4() {
         binary.symbol_value("__dcd_end")
     );
     assert_eq!(binary.symbol_value("__dcd"), Some(0));
-    baseline_teensy4(&binary, 0);
+    baseline_teensy4(&binary, 0, 8 * 1024, 1024);
 }
 
 #[test]
@@ -446,7 +452,7 @@ fn teensy4_fake_dcd() {
         binary.symbol_value("__dcd_start"),
     );
     assert_eq!(dcd.st_size % 4, 0);
-    baseline_teensy4(&binary, dcd_start as u32);
+    baseline_teensy4(&binary, dcd_start as u32, 8 * 1024, 1024);
 }
 
 #[test]
@@ -455,6 +461,45 @@ fn teensy4_fake_dcd_missize_fail() {
     cargo_build("__dcd_missize").expect_err("Build should fail for missized DCD section.");
     eprintln!();
     eprintln!("NOTE: Linker failures above are intentional --- this test has succeeded.");
+}
+
+#[test]
+#[ignore = "building an example can take time"]
+fn teensy4_env_overrides() {
+    let path = cargo_build_with_envs(
+        "teensy4",
+        &[
+            ("BOARD_STACK", "4096"),
+            ("THIS_WONT_BE_CONSIDERED", "12288"),
+            ("BOARD_HEAP", "8192"),
+        ],
+    )
+    .expect("Unable to build example");
+    let contents = fs::read(path).expect("Could not read ELF file");
+    let elf = Elf::parse(&contents).expect("Could not parse ELF");
+
+    let binary = ImxrtBinary::new(&elf, &contents);
+    baseline_teensy4(&binary, 0, 4 * 1024, 8 * 1024);
+}
+
+#[test]
+#[ignore = "building an example can take time"]
+fn teensy4_env_overrides_kib() {
+    let path = cargo_build_with_envs("teensy4", &[("BOARD_STACK", "5K"), ("BOARD_HEAP", "9k")])
+        .expect("Unable to build example");
+    let contents = fs::read(path).expect("Could not read ELF file");
+    let elf = Elf::parse(&contents).expect("Could not parse ELF");
+
+    let binary = ImxrtBinary::new(&elf, &contents);
+    baseline_teensy4(&binary, 0, 5 * 1024, 9 * 1024);
+}
+
+#[test]
+#[should_panic]
+#[ignore = "building an example can take time"]
+fn teensy4_env_override_fail() {
+    cargo_build_with_envs("teensy4", &[("BOARD_STACK", "1o24")])
+        .expect("Build should fail since BOARD_STACK can't be parsed");
 }
 
 #[test]

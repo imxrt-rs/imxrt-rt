@@ -120,6 +120,63 @@ struct FlashOpts {
     flexspi: FlexSpi,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct EnvOverride {
+    default: usize,
+    env: Option<String>,
+}
+
+impl EnvOverride {
+    const fn new(default: usize) -> Self {
+        Self { default, env: None }
+    }
+    fn set_env_key(&mut self, key: String) {
+        self.env = Some(key);
+    }
+    fn read(&self) -> Result<usize, Box<dyn std::error::Error>> {
+        if let Some(env) = &self.env {
+            // If the user sets multiple environment variables for the same runtime
+            // property (like stack, heap), we will only re-run when the variable
+            // we care about changes. An example might help:
+            //
+            //      let mut bldr = RuntimeBuilder::from_flexspi(/* ... */);
+            //      bldr.stack_size_env_override("COMMON_STACK");
+            //      if special_condition() {
+            //          bldr.stack_size_env_override("SPECIAL_STACK");
+            //      }
+            //
+            // If we take the branch, then we re-run the build if SPECIAL_STACK
+            // changes. Otherwise, we re-run if COMMON_STACK changes.
+            //
+            // I previously put this into `set_env_key`. That would mean we re-run
+            // the build if _either_ enviroment variable changes. But then I thought
+            // about the user who writes their build script like
+            //
+            //      if special_condition() {
+            //          bldr.stack_size_env_override("SPECIAL_STACK");
+            //      } else {
+            //          bldr.stack_size_env_override("COMMON_STACK");
+            //      }
+            //
+            // and how that would introduce different re-run behavior than the first
+            // example, even though the variable selection is the same. Coupling the
+            // re-run behavior to the variable selection behavior seems less surprising.
+            println!("cargo:rerun-if-env-changed={env}");
+        }
+
+        if let Some(val) = self.env.as_ref().and_then(|key| env::var(key).ok()) {
+            let val = if val.ends_with('k') || val.ends_with('K') {
+                val[..val.len() - 1].parse::<usize>()? * 1024
+            } else {
+                val.parse::<usize>()?
+            };
+            Ok(val)
+        } else {
+            Ok(self.default)
+        }
+    }
+}
+
 /// Builder for the i.MX RT runtime.
 ///
 /// `RuntimeBuilder` let you assign sections to memory regions. It also lets
@@ -169,6 +226,71 @@ struct FlashOpts {
 ///
 /// assert_eq!(b, RuntimeBuilder::from_flexspi(family, FLASH_SIZE));
 /// ```
+///
+/// # Environment overrides
+///
+/// Certain memory regions, like the stack and heap, can be sized using environment
+/// variables. As the provider of the runtime, you can use `*_env_override` methods
+/// to select the environment variable(s) that others may use to set the size, in bytes,
+/// for these memory regions.
+///
+/// The rest of this section describes how environment variables interact with other
+/// methods on this builder. Although the examples use stack size, the concepts apply
+/// to all regions that can be sized with environment variables.
+///
+/// ```no_run
+/// # use imxrt_rt::{Family, RuntimeBuilder, Memory};
+/// # const FLASH_SIZE: usize = 16 * 1024;
+/// # let family = Family::Imxrt1060;
+/// RuntimeBuilder::from_flexspi(family, FLASH_SIZE)
+///     .stack_size_env_override("YOUR_STACK_SIZE")
+///     // ...
+///     # .build().unwrap();
+/// ```
+///
+/// In the above example, if a user set an environment variable `YOUR_STACK_SIZE=1024`, then
+/// the runtime's stack size is 1024. Otherwise, the stack size is the default stack size.
+///
+/// > As a convenience, a user can use a `k` or `K` suffix to specify multiples of 1024 bytes.
+/// > For example, the environment variables `YOUR_STACK_SIZE=4k` and `YOUR_STACK_SIZE=4K` are
+/// > each equivalent to `YOUR_STACK_SIZE=4096`.
+///
+/// ```no_run
+/// # use imxrt_rt::{Family, RuntimeBuilder, Memory};
+/// # const FLASH_SIZE: usize = 16 * 1024;
+/// # let family = Family::Imxrt1060;
+/// RuntimeBuilder::from_flexspi(family, FLASH_SIZE)
+///     .stack_size_env_override("YOUR_STACK_SIZE")
+///     .stack_size(2048)
+///     // ...
+///     # .build().unwrap();
+///
+/// RuntimeBuilder::from_flexspi(family, FLASH_SIZE)
+///     .stack_size(2048)
+///     .stack_size_env_override("YOUR_STACK_SIZE")
+///     // ...
+///     # .build().unwrap();
+/// ```
+///
+/// In the above example, the two builders produce the same runtime. The builder
+/// selects the stack size from the environment variable, if available. Otherwise,
+/// the stack size is 2048 bytes. The call order is irrelevant, since the builder
+/// doesn't consult the environment until you invoke [`build()`](Self::build).
+///
+/// ```no_run
+/// # use imxrt_rt::{Family, RuntimeBuilder, Memory};
+/// # const FLASH_SIZE: usize = 16 * 1024;
+/// # let family = Family::Imxrt1060;
+/// RuntimeBuilder::from_flexspi(family, FLASH_SIZE)
+///     .stack_size_env_override("INVALIDATED")
+///     .stack_size_env_override("YOUR_STACK_SIZE")
+///     // ...
+///     # .build().unwrap();
+/// ````
+///
+/// In the above example, `YOUR_STACK_SIZE` invalidates the call with `INVALIDATED`.
+/// Therefore, `YOUR_STACK_SIZE` controls the stack size, if set. Otherwise, the stack
+/// size is the default stack size.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RuntimeBuilder {
     family: Family,
@@ -180,9 +302,9 @@ pub struct RuntimeBuilder {
     bss: Memory,
     uninit: Memory,
     stack: Memory,
-    stack_size: usize,
+    stack_size: EnvOverride,
     heap: Memory,
-    heap_size: usize,
+    heap_size: EnvOverride,
     flash_opts: Option<FlashOpts>,
     linker_script_name: String,
 }
@@ -205,9 +327,9 @@ impl RuntimeBuilder {
             bss: Memory::Ocram,
             uninit: Memory::Ocram,
             stack: Memory::Dtcm,
-            stack_size: 8 * 1024,
+            stack_size: EnvOverride::new(8 * 1024),
             heap: Memory::Dtcm,
-            heap_size: 0,
+            heap_size: EnvOverride::new(0),
             flash_opts: Some(FlashOpts {
                 size: flash_size,
                 flexspi: FlexSpi::family_default(family),
@@ -261,7 +383,15 @@ impl RuntimeBuilder {
     }
     /// Set the size, in bytes, of the stack.
     pub fn stack_size(&mut self, bytes: usize) -> &mut Self {
-        self.stack_size = bytes;
+        self.stack_size.default = bytes;
+        self
+    }
+    /// Let end users override the stack size using an environment variable.
+    ///
+    /// See the [environment overrides](Self#environment-overrides) documentation
+    /// for more information.
+    pub fn stack_size_env_override(&mut self, key: impl AsRef<str>) -> &mut Self {
+        self.stack_size.set_env_key(key.as_ref().into());
         self
     }
     /// Set the memory placement for the heap.
@@ -274,7 +404,15 @@ impl RuntimeBuilder {
     }
     /// Set the size, in bytes, of the heap.
     pub fn heap_size(&mut self, bytes: usize) -> &mut Self {
-        self.heap_size = bytes;
+        self.heap_size.default = bytes;
+        self
+    }
+    /// Let end users override the heap size using an environment variable.
+    ///
+    /// See the [environment overrides](Self#environment-overrides) documentation
+    /// for more information.
+    pub fn heap_size_env_override(&mut self, key: impl AsRef<str>) -> &mut Self {
+        self.heap_size.set_env_key(key.as_ref().into());
         self
     }
     /// Set the FlexSPI peripheral that interfaces flash.
@@ -384,8 +522,8 @@ impl RuntimeBuilder {
         region_alias(writer, "STACK", self.stack)?;
         region_alias(writer, "HEAP", self.heap)?;
         // Used in the linker script and / or target code.
-        writeln!(writer, "__stack_size = {:#010X};", self.stack_size)?;
-        writeln!(writer, "__heap_size = {:#010X};", self.heap_size)?;
+        writeln!(writer, "__stack_size = {:#010X};", self.stack_size.read()?)?;
+        writeln!(writer, "__heap_size = {:#010X};", self.heap_size.read()?)?;
 
         if self.flash_opts.is_some() {
             // Runtime will see different VMA and LMA, and copy the sections.

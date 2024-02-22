@@ -28,6 +28,9 @@ fn main() {
                     .data(imxrt_rt::Memory::Dtcm)
                     .bss(imxrt_rt::Memory::Dtcm)
                     .uninit(imxrt_rt::Memory::Dtcm)
+                    .stack_size_env_override("THIS_WONT_BE_CONSIDERED")
+                    .stack_size_env_override("BOARD_STACK")
+                    .heap_size_env_override("BOARD_HEAP")
                     .build()
                     .unwrap()
             }
@@ -37,6 +40,8 @@ fn main() {
             )
             .heap_size(1024)
             .rodata(imxrt_rt::Memory::Flash)
+            .stack_size_env_override("BOARD_STACK")
+            .heap_size_env_override("BOARD_HEAP")
             .build()
             .unwrap(),
             "imxrt1170evk_cm7" => imxrt_rt::RuntimeBuilder::from_flexspi(
@@ -44,6 +49,8 @@ fn main() {
                 16 * 1024 * 1024,
             )
             .rodata(imxrt_rt::Memory::Dtcm)
+            .stack_size_env_override("BOARD_STACK")
+            .heap_size_env_override("BOARD_HEAP")
             .build()
             .unwrap(),
             _ => continue,

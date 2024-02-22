@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+Add configurations to `RuntimeBuilder`:
+
+- `stack_size_env_override`
+- `heap_size_env_override`
+
+Use these methods to define environment variables that can override the
+stack / heap sizes.
+
 ## [0.1.3] 2023-10-01
 
 Ensure that the runtime supports the GNU linker, `ld`.
