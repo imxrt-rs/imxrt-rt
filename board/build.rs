@@ -28,6 +28,9 @@ fn main() {
                     .data(imxrt_rt::Memory::Dtcm)
                     .bss(imxrt_rt::Memory::Dtcm)
                     .uninit(imxrt_rt::Memory::Dtcm)
+                    .stack_size_env_override("THIS_WONT_BE_CONSIDERED")
+                    .stack_size_env_override("BOARD_T4_STACK")
+                    .heap_size_env_override("SOME_HEAP_SIZE_BYTES")
                     .build()
                     .unwrap()
             }
