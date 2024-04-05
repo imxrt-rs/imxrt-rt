@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.1.4] 2024-04-05
+
 Add configurations to `RuntimeBuilder`:
 
 - `stack_size_env_override`
@@ -36,6 +38,7 @@ First release. `imxrt-rt` provides a build-time API that defines a memory map,
 as well as a runtime library that configures i.MX RT 10xx and 11xx processors.
 
 [Unreleased]: https://github.com/imxrt-rs/imxrt-rt/compare/v0.1.1...HEAD
+[0.1.4]: https://github.com/imxrt-rs/imxrt-rt/releases/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/imxrt-rs/imxrt-rt/releases/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/imxrt-rs/imxrt-rt/releases/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/imxrt-rs/imxrt-rt/releases/compare/v0.1.0...v0.1.1
