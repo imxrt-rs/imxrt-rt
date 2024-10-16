@@ -40,7 +40,11 @@ impl Pit {
         ral::write_reg!(ral::pit::timer, timer, LDVAL, timer_delay_microseconds);
         // Enable the PIT timer
         ral::modify_reg!(ral::pit, pit, MCR, MDIS: 0);
-        Self(unsafe { core::mem::transmute(pit) })
+        Self(unsafe {
+            core::mem::transmute::<&'_ ral::pit::RegisterBlock, &'static ral::pit::RegisterBlock>(
+                pit,
+            )
+        })
     }
     pub fn blocking_delay(&mut self) {
         let timer = &self.0.TIMER[0];
@@ -78,7 +82,12 @@ impl Led {
     fn new(offset: u32, port: &ral::gpio::RegisterBlock) -> Self {
         let led = Led {
             offset,
-            port: unsafe { core::mem::transmute(port) },
+            port: unsafe {
+                core::mem::transmute::<
+                    &'_ ral::gpio::RegisterBlock,
+                    &'static ral::gpio::RegisterBlock,
+                >(port)
+            },
         };
         ral::modify_reg!(ral::gpio, port, GDIR, |gdir| gdir | led.mask());
         led
