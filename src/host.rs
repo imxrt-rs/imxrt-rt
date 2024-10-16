@@ -66,7 +66,8 @@ impl FlexSpi {
             | Family::Imxrt1020
             | Family::Imxrt1050
             | Family::Imxrt1060
-            | Family::Imxrt1170 => FlexSpi::FlexSpi1,
+            | Family::Imxrt1170
+            | Family::Imxrt1180 => FlexSpi::FlexSpi1,
         }
     }
     fn start_address(self, family: Family) -> Option<u32> {
@@ -91,6 +92,8 @@ impl FlexSpi {
             // 11xx support
             (FlexSpi::FlexSpi1, Family::Imxrt1170) => Some(0x3000_0000),
             (FlexSpi::FlexSpi2, Family::Imxrt1170) => Some(0x6000_0000),
+            (FlexSpi::FlexSpi1, Family::Imxrt1180) => Some(0x2800_0000),
+            (FlexSpi::FlexSpi2, Family::Imxrt1180) => Some(0x0400_0000),
         }
     }
     fn supported_for_family(self, family: Family) -> bool {
@@ -498,7 +501,16 @@ impl RuntimeBuilder {
         if let Some(flash_opts) = &self.flash_opts {
             write_flash_memory_map(writer, self.family, flash_opts, &self.flexram_banks)?;
 
-            let boot_header_x = include_bytes!("host/imxrt-boot-header.x");
+            let boot_header_x = match self.family {
+                Family::Imxrt1010
+                | Family::Imxrt1015
+                | Family::Imxrt1020
+                | Family::Imxrt1050
+                | Family::Imxrt1060
+                | Family::Imxrt1064
+                | Family::Imxrt1170 => include_bytes!("host/imxrt-boot-header.x").as_slice(),
+                Family::Imxrt1180 => include_bytes!("host/imxrt-boot-header-1180.x").as_slice(),
+            };
             writer.write_all(boot_header_x)?;
         } else {
             write_ram_memory_map(writer, self.family, &self.flexram_banks)?;
@@ -543,7 +555,7 @@ impl RuntimeBuilder {
         writeln!(
             writer,
             "__flexram_config = {:#010X};",
-            self.flexram_banks.config()
+            self.flexram_banks.config(self.family)
         )?;
         // The target runtime looks at this value to predicate some pre-init instructions.
         // Could be helpful for binary identification, but it's an undocumented feature.
@@ -619,10 +631,20 @@ fn write_flexram_memories(
     flexram_banks: &FlexRamBanks,
 ) -> io::Result<()> {
     if flexram_banks.itcm > 0 {
+        let itcm_size = flexram_banks.itcm * family.flexram_bank_size();
+        let itcm_start = match family {
+            Family::Imxrt1010
+            | Family::Imxrt1015
+            | Family::Imxrt1020
+            | Family::Imxrt1050
+            | Family::Imxrt1060
+            | Family::Imxrt1064
+            | Family::Imxrt1170 => 0x00000000,
+            Family::Imxrt1180 => 0x10000000 - itcm_size,
+        };
         writeln!(
             output,
-            "ITCM (RWX) : ORIGIN = 0x00000000, LENGTH = {:#X}",
-            flexram_banks.itcm * family.flexram_bank_size(),
+            "ITCM (RWX) : ORIGIN = {itcm_start:#X}, LENGTH = {itcm_size:#X}"
         )?;
     }
     if flexram_banks.dtcm > 0 {
@@ -708,6 +730,7 @@ pub enum Family {
     Imxrt1060,
     Imxrt1064,
     Imxrt1170,
+    Imxrt1180,
 }
 
 impl Family {
@@ -725,6 +748,7 @@ impl Family {
             Family::Imxrt1060 => 1060,
             Family::Imxrt1064 => 1064,
             Family::Imxrt1170 => 1170,
+            Family::Imxrt1180 => 1180,
         }
     }
     /// How many FlexRAM banks are available?
@@ -735,11 +759,21 @@ impl Family {
             Family::Imxrt1050 | Family::Imxrt1060 | Family::Imxrt1064 => 16,
             // No ECC support; treating all banks as equal.
             Family::Imxrt1170 => 16,
+            Family::Imxrt1180 => 2,
         }
     }
     /// How large (bytes) is each FlexRAM bank?
     const fn flexram_bank_size(self) -> u32 {
-        32 * 1024
+        match self {
+            Family::Imxrt1010
+            | Family::Imxrt1015
+            | Family::Imxrt1020
+            | Family::Imxrt1050
+            | Family::Imxrt1060
+            | Family::Imxrt1064
+            | Family::Imxrt1170 => 32 * 1024,
+            Family::Imxrt1180 => 128 * 1024,
+        }
     }
     /// How many OCRAM banks does the boot ROM need?
     const fn bootrom_ocram_banks(self) -> u32 {
@@ -748,13 +782,13 @@ impl Family {
             // 9.5.1. memory maps point at OCRAM2.
             Family::Imxrt1060 | Family::Imxrt1064 => 0,
             // Boot ROM uses dedicated OCRAM1.
-            Family::Imxrt1170 => 0,
+            Family::Imxrt1170 | Family::Imxrt1180 => 0,
         }
     }
     /// Where's the FlexSPI configuration bank located?
     fn fcb_offset(self) -> usize {
         match self {
-            Family::Imxrt1010 | Family::Imxrt1170 => 0x400,
+            Family::Imxrt1010 | Family::Imxrt1170 | Family::Imxrt1180 => 0x400,
             Family::Imxrt1015
             | Family::Imxrt1020
             | Family::Imxrt1050
@@ -770,6 +804,8 @@ impl Family {
         match self {
             // 256 KiB offset from the OCRAM M4 backdoor.
             Family::Imxrt1170 => 0x2024_0000,
+            // Skip the first 16 KiB, "cannot be safely used by application images".
+            Family::Imxrt1180 => 0x2048_4000,
             // Either starts the FlexRAM OCRAM banks, or the
             // dedicated OCRAM regions (for supported devices).
             Family::Imxrt1010
@@ -792,6 +828,8 @@ impl Family {
             // - Two dedicated OCRAM ECC regions that aren't used for ECC
             // - One FlexRAM OCRAM ECC region that's strictly OCRAM, without ECC
             Family::Imxrt1170 => (2 * 512 + 2 * 64 + 128) * 1024,
+            // OCRAM1 (512k), OCRAM2 (256k), 16k reserved as a ROM patch area
+            Family::Imxrt1180 => (512 + 256 - 16) * 1024,
         }
     }
 
@@ -819,6 +857,11 @@ impl Family {
                 ocram: 0,
                 itcm: 8,
                 dtcm: 8,
+            },
+            Family::Imxrt1180 => FlexRamBanks {
+                ocram: 0,
+                itcm: 1,
+                dtcm: 1,
             },
         }
     }
@@ -861,7 +904,21 @@ impl FlexRamBanks {
     }
 
     /// Produces the FlexRAM configuration.
-    fn config(&self) -> u32 {
+    fn config(&self, family: Family) -> u32 {
+        match family {
+            Family::Imxrt1010
+            | Family::Imxrt1015
+            | Family::Imxrt1020
+            | Family::Imxrt1050
+            | Family::Imxrt1060
+            | Family::Imxrt1064
+            | Family::Imxrt1170 => self.config_gpr(),
+            Family::Imxrt1180 => self.config_1180(),
+        }
+    }
+
+    /// Produces the FlexRAM configuration for families using GPR17.
+    fn config_gpr(&self) -> u32 {
         assert!(
             self.bank_count() <= 16,
             "Something is wrong; this should have been checked earlier."
@@ -887,6 +944,17 @@ impl FlexRamBanks {
             .unwrap_or(0);
 
         (OCRAM & ocram_mask) | (DTCM & dtcm_mask) | (ITCM & itcm_mask)
+    }
+
+    fn config_1180(&self) -> u32 {
+        match (self.itcm, self.dtcm, self.ocram) {
+            (1, 1, 0) => 0b00_u32,
+            (2, 0, 0) => 0b10,
+            (0, 2, 0) => 0b01,
+            _ => panic!("Unsupported FlexRAM configuration"),
+        }
+        .checked_shl(2)
+        .unwrap()
     }
 }
 
@@ -996,7 +1064,7 @@ mod tests {
         ];
 
         for (banks, expected) in TABLE {
-            let actual = banks.config();
+            let actual = banks.config(Family::Imxrt1010);
             assert!(
                 actual == *expected,
                 "\nActual:   {actual:#034b}\nExpected: {expected:#034b}\nBanks: {banks:?}"

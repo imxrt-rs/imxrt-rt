@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+Add initial support for RT1180.
+
 ## [0.1.4] 2024-04-05
 
 Add configurations to `RuntimeBuilder`:

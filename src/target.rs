@@ -41,6 +41,9 @@ global_asm! {r#"
 
 __pre_init:
     ldr r0, =__imxrt_family         @ Need to know which chip family we're initializing.
+    ldr r1, =1180
+    cmp r0, r1                      @ Is this an 1180?
+    beq flexram_1180
     ldr r1, =1170
     cmp r0, r1                      @ Is this an 1170?
 
@@ -66,7 +69,14 @@ __pre_init:
     ldr r1, [r0, #64]               @ r1 = *(IMXRT_IOMUXC_GPR + 16)
     orr r1, r1, #1<<2               @ r1 |= 1 << 2
     str r1, [r0, #64]               @ *(IMXRT_IOMUXC_GPR + 16) = r1
+    b copy_from_flash
 
+    flexram_1180:
+    ldr r0, =0x444F0060             @ M33_CONFIG
+    ldr r1, =__flexram_config
+    str r1, [r0, #0]
+
+    copy_from_flash:
     # Conditionally copy text.
     ldr r0, =__stext
     ldr r2, =__sitext

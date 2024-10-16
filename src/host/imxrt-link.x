@@ -48,6 +48,7 @@ SECTIONS
 
   .vector_table : ALIGN(1024)
   {
+    FILL(0xff);
     __vector_table = .;
     __svector_table = .;
 
@@ -68,13 +69,19 @@ SECTIONS
   } > REGION_VTABLE AT> REGION_LOAD_VTABLE
   __sivector_table = LOADADDR(.vector_table);
 
-  .text :
+  /* This section guarantees VMA = LMA to allow the execute-in-place entry point to be inside the image. */
+  .xip :
   {
-    __stext = .;
-    *(.text .text.*);
-    /* Included in .text if not otherwise included in the boot header. */
+    /* Included here if not otherwise included in the boot header. */
     *(.Reset);
     *(.__pre_init);
+  } > REGION_LOAD_TEXT
+
+  .text :
+  {
+    FILL(0xff);
+    __stext = .;
+    *(.text .text.*);
     /* The HardFaultTrampoline uses the `b` instruction to enter `HardFault`,
        so must be placed close to it. */
     *(.HardFaultTrampoline);
@@ -86,6 +93,7 @@ SECTIONS
 
   .rodata : ALIGN(4)
   {
+    FILL(0xff);
     . = ALIGN(4);
     __srodata = .;
     *(.rodata .rodata.*);
@@ -100,6 +108,7 @@ SECTIONS
 
   .data : ALIGN(4)
   {
+    FILL(0xff);
     . = ALIGN(4);
     __sdata = .;
     *(.data .data.*);

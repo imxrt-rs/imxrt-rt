@@ -8,7 +8,7 @@
  * Note that it depends on the section layout! Need to represent contiguous
  * sections starting from the boot header.
  */
-__image_size = SIZEOF(.boot) + SIZEOF(.vector_table) + SIZEOF(.text) + SIZEOF(.rodata);
+__image_size = SIZEOF(.boot) + SIZEOF(.vector_table) + SIZEOF(.xip) + SIZEOF(.text) + SIZEOF(.rodata);
 
 /* END TODO */
 EXTERN(FLEXSPI_CONFIGURATION_BLOCK);
