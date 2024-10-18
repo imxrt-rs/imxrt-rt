@@ -138,5 +138,11 @@ pub fn heap_end() -> *mut u32 {
     extern "C" {
         static mut __eheap: c_void;
     }
-    unsafe { core::ptr::addr_of_mut!(__eheap) as _ }
+
+    // It used to be unsafe. Keeping it unsafe is backwards
+    // compatible.
+    #[allow(unused_unsafe)]
+    unsafe {
+        core::ptr::addr_of_mut!(__eheap) as _
+    }
 }
