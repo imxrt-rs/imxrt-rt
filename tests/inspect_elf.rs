@@ -250,7 +250,7 @@ fn imxrt1010evk() {
     let rodata = binary.section(".rodata").unwrap();
     assert_eq!(
         rodata.address,
-        0x6000_2000 + vector_table.size + aligned(text.size, 16),
+        0x6000_2000 + vector_table.size + aligned(text.size, 4),
         "rodata LMA & VMA expected behind text"
     );
     assert_eq!(rodata.address, binary.section_lma(".rodata"));
