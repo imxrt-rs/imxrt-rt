@@ -10,7 +10,7 @@ jobs:
   format:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v4
     - run: rustup toolchain install stable --no-self-update --profile minimal
     - name: Check formatting
       run: cargo fmt --verbose --all --check
@@ -18,7 +18,7 @@ jobs:
   clippy:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v4
     - name: Install a stable toolchain with clippy
       run: rustup toolchain install stable --no-self-update --profile minimal --component clippy
     - name: Lint the host API
@@ -27,7 +27,7 @@ jobs:
   tests:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v4
     - run: rustup toolchain install stable --no-self-update --profile minimal --target thumbv7em-none-eabihf
     - name: Run doc tests
       run: cargo test --doc
@@ -46,7 +46,7 @@ jobs:
       matrix:
         board: [ teensy4, imxrt1010evk, imxrt1170evk-cm7 ]
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v4
     - run: rustup toolchain install stable --no-self-update --profile minimal --target thumbv7em-none-eabihf --component clippy
     - name: Lint the RTIC example for ${{ matrix.board }}
       run: cargo clippy --example=blink-rtic --target=thumbv7em-none-eabihf --features=board/${{ matrix.board }},board/rtic -- -D warnings
@@ -58,7 +58,7 @@ jobs:
     env:
       RUSTDOCFLAGS: -D warnings
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v4
     - run: rustup toolchain install stable --no-self-update --profile minimal
     - name: Check host documentation
       run: cargo rustdoc --package=imxrt-rt
