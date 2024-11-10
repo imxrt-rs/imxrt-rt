@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+Bump `cortex-m-rt` to get access to `_stack_end` symbols, e.g. for use with MSPLIM.
+
 ## [0.1.5] 2024-10-26
 
 Add initial support for RT1180.
