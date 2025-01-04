@@ -67,6 +67,7 @@ impl FlexSpi {
             | Family::Imxrt1040
             | Family::Imxrt1050
             | Family::Imxrt1060
+            | Family::Imxrt1160
             | Family::Imxrt1170
             | Family::Imxrt1180 => FlexSpi::FlexSpi1,
         }
@@ -94,6 +95,8 @@ impl FlexSpi {
                 Some(0x7000_0000)
             }
             // 11xx support
+            (FlexSpi::FlexSpi1, Family::Imxrt1160) => Some(0x3000_0000),
+            (FlexSpi::FlexSpi2, Family::Imxrt1160) => Some(0x6000_0000),
             (FlexSpi::FlexSpi1, Family::Imxrt1170) => Some(0x3000_0000),
             (FlexSpi::FlexSpi2, Family::Imxrt1170) => Some(0x6000_0000),
             (FlexSpi::FlexSpi1, Family::Imxrt1180) => Some(0x2800_0000),
@@ -513,6 +516,7 @@ impl RuntimeBuilder {
                 | Family::Imxrt1050
                 | Family::Imxrt1060
                 | Family::Imxrt1064
+                | Family::Imxrt1160
                 | Family::Imxrt1170 => include_bytes!("host/imxrt-boot-header.x").as_slice(),
                 Family::Imxrt1180 => include_bytes!("host/imxrt-boot-header-1180.x").as_slice(),
             };
@@ -645,6 +649,7 @@ fn write_flexram_memories(
             | Family::Imxrt1050
             | Family::Imxrt1060
             | Family::Imxrt1064
+            | Family::Imxrt1160
             | Family::Imxrt1170 => 0x00000000,
             Family::Imxrt1180 => 0x10000000 - itcm_size,
         };
@@ -736,6 +741,7 @@ pub enum Family {
     Imxrt1050,
     Imxrt1060,
     Imxrt1064,
+    Imxrt1160,
     Imxrt1170,
     Imxrt1180,
 }
@@ -755,6 +761,7 @@ impl Family {
             Family::Imxrt1050 => 1050,
             Family::Imxrt1060 => 1060,
             Family::Imxrt1064 => 1064,
+            Family::Imxrt1160 => 1160,
             Family::Imxrt1170 => 1170,
             Family::Imxrt1180 => 1180,
         }
@@ -766,7 +773,7 @@ impl Family {
             Family::Imxrt1020 => 8,
             Family::Imxrt1040 | Family::Imxrt1050 | Family::Imxrt1060 | Family::Imxrt1064 => 16,
             // No ECC support; treating all banks as equal.
-            Family::Imxrt1170 => 16,
+            Family::Imxrt1160 | Family::Imxrt1170 => 16,
             Family::Imxrt1180 => 2,
         }
     }
@@ -780,6 +787,7 @@ impl Family {
             | Family::Imxrt1050
             | Family::Imxrt1060
             | Family::Imxrt1064
+            | Family::Imxrt1160
             | Family::Imxrt1170 => 32 * 1024,
             Family::Imxrt1180 => 128 * 1024,
         }
@@ -795,13 +803,13 @@ impl Family {
             // 9.5.1. memory maps point at OCRAM2.
             Family::Imxrt1060 | Family::Imxrt1064 => 0,
             // Boot ROM uses dedicated OCRAM1.
-            Family::Imxrt1170 | Family::Imxrt1180 => 0,
+            Family::Imxrt1160 | Family::Imxrt1170 | Family::Imxrt1180 => 0,
         }
     }
     /// Where's the FlexSPI configuration bank located?
     fn fcb_offset(self) -> usize {
         match self {
-            Family::Imxrt1010 | Family::Imxrt1170 | Family::Imxrt1180 => 0x400,
+            Family::Imxrt1010 | Family::Imxrt1160 | Family::Imxrt1170 | Family::Imxrt1180 => 0x400,
             Family::Imxrt1015
             | Family::Imxrt1020
             | Family::Imxrt1040
@@ -818,6 +826,10 @@ impl Family {
         match self {
             // 256 KiB offset from the OCRAM M4 backdoor.
             Family::Imxrt1170 => 0x2024_0000,
+            // Using the alias regions, assuming ECC is disabled.
+            // The two alias regions, plus the ECC region, provide
+            // the *contiguous* 256 KiB of dedicated OCRAM.
+            Family::Imxrt1160 => 0x2034_0000,
             // Skip the first 16 KiB, "cannot be safely used by application images".
             Family::Imxrt1180 => 0x2048_4000,
             // Either starts the FlexRAM OCRAM banks, or the
@@ -843,6 +855,9 @@ impl Family {
             | Family::Imxrt1040
             | Family::Imxrt1050 => 0,
             Family::Imxrt1060 | Family::Imxrt1064 => 512 * 1024,
+            // - Two dedicated OCRAMs
+            // - One FlexRAM OCRAM EC region that's OCRAM when ECC is disabled.
+            Family::Imxrt1160 => (2 * 64 + 128) * 1024,
             // - Two dedicated OCRAMs
             // - Two dedicated OCRAM ECC regions that aren't used for ECC
             // - One FlexRAM OCRAM ECC region that's strictly OCRAM, without ECC
@@ -874,7 +889,7 @@ impl Family {
                     dtcm: 4,
                 }
             }
-            Family::Imxrt1170 => FlexRamBanks {
+            Family::Imxrt1160 | Family::Imxrt1170 => FlexRamBanks {
                 ocram: 0,
                 itcm: 8,
                 dtcm: 8,
@@ -934,6 +949,7 @@ impl FlexRamBanks {
             | Family::Imxrt1050
             | Family::Imxrt1060
             | Family::Imxrt1064
+            | Family::Imxrt1160
             | Family::Imxrt1170 => self.config_gpr(),
             Family::Imxrt1180 => self.config_1180(),
         }

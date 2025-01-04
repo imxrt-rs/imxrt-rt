@@ -5,6 +5,7 @@
 Add new MCU targets:
 
 - imxrt1040
+- imxrt1160
 
 ## [0.1.5] 2024-10-26
 

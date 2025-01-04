@@ -145,7 +145,7 @@
 //! the 1050, which has the widest spread of bank-to-power domain assignment
 //! (according to AN12077).
 //!
-//! There is no support for ECC on 1170. The runtime assumes that OCRAM and TCM ECC
+//! There is no support for ECC on 1160 or 1170. The runtime assumes that OCRAM and TCM ECC
 //! is disabled, and that the corresponding memory banks can be used for OCRAM.
 //!
 //! The runtime installs a `cortex-m-rt` `pre_init` function to configure the runtime.

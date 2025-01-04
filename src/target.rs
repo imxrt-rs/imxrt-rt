@@ -44,13 +44,13 @@ __pre_init:
     ldr r1, =1180
     cmp r0, r1                      @ Is this an 1180?
     beq flexram_1180
-    ldr r1, =1170
-    cmp r0, r1                      @ Is this an 1170?
+    ldr r1, =1100
+    cmp r0, r1                      @ Is this an 1160 or 1170?
 
     # Disable RTWODOG3.
-    ite eq
-    ldreq r2, =0x40038000           @ RTWDOG base address for 11xx chips...
-    ldrne r2, =0x400BC000           @ RTWDOG base address for 10xx chips...
+    ite gt
+    ldrgt r2, =0x40038000           @ RTWDOG base address for 11xx chips...
+    ldrle r2, =0x400BC000           @ RTWDOG base address for 10xx chips...
     ldr r3, =0xD928C520             @ RTWDOG magic number
     str r3, [r2, #4]                @ RTWDOG[CNT] = 0xD928C520.
     ldr r3, [r2]                    @ r3 = RTWDOG[CS]
@@ -60,11 +60,11 @@ __pre_init:
     # Prepare FlexRAM regions.
     ldr r0, =0x400AC000             @ IMXRT_IOMUXC_GPR base address for 10xx chips, overwritten if actually 11xx...
     ldr r1, =__flexram_config       @ Value for GPR17 (and GPR18 for 11xx)
-    itttt eq                        @ Need a few extra operations to handle 1170 split banks.
-    ldreq r0, =0x400E4000           @ IMXRT_IOMUXC_GPR base address for 11xx chips, overwrite 10xx address...
-    lsreq r2, r1, #16               @ r2 = ((unsigned)r1 >> 16)
-    streq r2, [r0, #72]             @ *(IMXRT_IOMUXC_GPR + 18) = r2
-    ubfxeq r1, r1, #0, #16          @ r1 = ((unsigned)r1 >> 0) & 0xFFFF, overwrite r1 with lower halfword.
+    itttt gt                        @ Need a few extra operations to handle 11xx split banks.
+    ldrgt r0, =0x400E4000           @ IMXRT_IOMUXC_GPR base address for 11xx chips, overwrite 10xx address...
+    lsrgt r2, r1, #16               @ r2 = ((unsigned)r1 >> 16)
+    strgt r2, [r0, #72]             @ *(IMXRT_IOMUXC_GPR + 18) = r2
+    ubfxgt r1, r1, #0, #16          @ r1 = ((unsigned)r1 >> 0) & 0xFFFF, overwrite r1 with lower halfword.
     str r1, [r0, #68]               @ *(IMXRT_IOMUXC_GPR + 17) = r1
     ldr r1, [r0, #64]               @ r1 = *(IMXRT_IOMUXC_GPR + 16)
     orr r1, r1, #1<<2               @ r1 |= 1 << 2
