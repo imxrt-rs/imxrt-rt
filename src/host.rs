@@ -64,6 +64,7 @@ impl FlexSpi {
             Family::Imxrt1010
             | Family::Imxrt1015
             | Family::Imxrt1020
+            | Family::Imxrt1040
             | Family::Imxrt1050
             | Family::Imxrt1060
             | Family::Imxrt1170
@@ -78,6 +79,7 @@ impl FlexSpi {
                 Family::Imxrt1010
                 | Family::Imxrt1015
                 | Family::Imxrt1020
+                | Family::Imxrt1040
                 | Family::Imxrt1050
                 | Family::Imxrt1060
                 | Family::Imxrt1064,
@@ -88,7 +90,9 @@ impl FlexSpi {
                 Family::Imxrt1010 | Family::Imxrt1015 | Family::Imxrt1020 | Family::Imxrt1050,
             ) => None,
             // FlexSPI 2 available on 10xx families
-            (FlexSpi::FlexSpi2, Family::Imxrt1060 | Family::Imxrt1064) => Some(0x7000_0000),
+            (FlexSpi::FlexSpi2, Family::Imxrt1040 | Family::Imxrt1060 | Family::Imxrt1064) => {
+                Some(0x7000_0000)
+            }
             // 11xx support
             (FlexSpi::FlexSpi1, Family::Imxrt1170) => Some(0x3000_0000),
             (FlexSpi::FlexSpi2, Family::Imxrt1170) => Some(0x6000_0000),
@@ -505,6 +509,7 @@ impl RuntimeBuilder {
                 Family::Imxrt1010
                 | Family::Imxrt1015
                 | Family::Imxrt1020
+                | Family::Imxrt1040
                 | Family::Imxrt1050
                 | Family::Imxrt1060
                 | Family::Imxrt1064
@@ -636,6 +641,7 @@ fn write_flexram_memories(
             Family::Imxrt1010
             | Family::Imxrt1015
             | Family::Imxrt1020
+            | Family::Imxrt1040
             | Family::Imxrt1050
             | Family::Imxrt1060
             | Family::Imxrt1064
@@ -726,6 +732,7 @@ pub enum Family {
     Imxrt1010,
     Imxrt1015,
     Imxrt1020,
+    Imxrt1040,
     Imxrt1050,
     Imxrt1060,
     Imxrt1064,
@@ -744,6 +751,7 @@ impl Family {
             Family::Imxrt1010 => 1010,
             Family::Imxrt1015 => 1015,
             Family::Imxrt1020 => 1020,
+            Family::Imxrt1040 => 1040,
             Family::Imxrt1050 => 1050,
             Family::Imxrt1060 => 1060,
             Family::Imxrt1064 => 1064,
@@ -756,7 +764,7 @@ impl Family {
         match self {
             Family::Imxrt1010 | Family::Imxrt1015 => 4,
             Family::Imxrt1020 => 8,
-            Family::Imxrt1050 | Family::Imxrt1060 | Family::Imxrt1064 => 16,
+            Family::Imxrt1040 | Family::Imxrt1050 | Family::Imxrt1060 | Family::Imxrt1064 => 16,
             // No ECC support; treating all banks as equal.
             Family::Imxrt1170 => 16,
             Family::Imxrt1180 => 2,
@@ -768,6 +776,7 @@ impl Family {
             Family::Imxrt1010
             | Family::Imxrt1015
             | Family::Imxrt1020
+            | Family::Imxrt1040
             | Family::Imxrt1050
             | Family::Imxrt1060
             | Family::Imxrt1064
@@ -778,7 +787,11 @@ impl Family {
     /// How many OCRAM banks does the boot ROM need?
     const fn bootrom_ocram_banks(self) -> u32 {
         match self {
-            Family::Imxrt1010 | Family::Imxrt1015 | Family::Imxrt1020 | Family::Imxrt1050 => 1,
+            Family::Imxrt1010
+            | Family::Imxrt1015
+            | Family::Imxrt1020
+            | Family::Imxrt1040
+            | Family::Imxrt1050 => 1,
             // 9.5.1. memory maps point at OCRAM2.
             Family::Imxrt1060 | Family::Imxrt1064 => 0,
             // Boot ROM uses dedicated OCRAM1.
@@ -791,6 +804,7 @@ impl Family {
             Family::Imxrt1010 | Family::Imxrt1170 | Family::Imxrt1180 => 0x400,
             Family::Imxrt1015
             | Family::Imxrt1020
+            | Family::Imxrt1040
             | Family::Imxrt1050
             | Family::Imxrt1060
             | Family::Imxrt1064 => 0x000,
@@ -811,6 +825,7 @@ impl Family {
             Family::Imxrt1010
             | Family::Imxrt1015
             | Family::Imxrt1020
+            | Family::Imxrt1040
             | Family::Imxrt1050
             | Family::Imxrt1060
             | Family::Imxrt1064 => 0x2020_0000,
@@ -822,7 +837,11 @@ impl Family {
     /// This isn't supported by all chips.
     const fn dedicated_ocram_size(self) -> u32 {
         match self {
-            Family::Imxrt1010 | Family::Imxrt1015 | Family::Imxrt1020 | Family::Imxrt1050 => 0,
+            Family::Imxrt1010
+            | Family::Imxrt1015
+            | Family::Imxrt1020
+            | Family::Imxrt1040
+            | Family::Imxrt1050 => 0,
             Family::Imxrt1060 | Family::Imxrt1064 => 512 * 1024,
             // - Two dedicated OCRAMs
             // - Two dedicated OCRAM ECC regions that aren't used for ECC
@@ -848,11 +867,13 @@ impl Family {
                 itcm: 2,
                 dtcm: 2,
             },
-            Family::Imxrt1050 | Family::Imxrt1060 | Family::Imxrt1064 => FlexRamBanks {
-                ocram: 8,
-                itcm: 4,
-                dtcm: 4,
-            },
+            Family::Imxrt1040 | Family::Imxrt1050 | Family::Imxrt1060 | Family::Imxrt1064 => {
+                FlexRamBanks {
+                    ocram: 8,
+                    itcm: 4,
+                    dtcm: 4,
+                }
+            }
             Family::Imxrt1170 => FlexRamBanks {
                 ocram: 0,
                 itcm: 8,
@@ -909,6 +930,7 @@ impl FlexRamBanks {
             Family::Imxrt1010
             | Family::Imxrt1015
             | Family::Imxrt1020
+            | Family::Imxrt1040
             | Family::Imxrt1050
             | Family::Imxrt1060
             | Family::Imxrt1064
@@ -969,6 +991,7 @@ mod tests {
         Family::Imxrt1010,
         Family::Imxrt1015,
         Family::Imxrt1020,
+        Family::Imxrt1040,
         Family::Imxrt1050,
         Family::Imxrt1060,
         Family::Imxrt1064,

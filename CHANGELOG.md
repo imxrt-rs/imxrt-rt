@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+Add new MCU targets:
+
+- imxrt1040
+
 ## [0.1.5] 2024-10-26
 
 Add initial support for RT1180.
