@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+Introduce `RuntimeBuilder::in_flash` for creating images that can be launched
+by your own software, instead of NXP's boot ROM.
+
 Place sections starting with `.xip` into the same load region of `.text`.
 Unlike `.text`, the contents in `.xip` will not be relocated.
 

@@ -7,6 +7,16 @@ fn extract_features() -> HashSet<String> {
         .collect()
 }
 
+/// Creates a runtime for a particular family, adjusting whether the image is expected to be boot
+/// based on provided features.
+fn create_runtime(family: imxrt_rt::Family, flash_size: usize) -> imxrt_rt::RuntimeBuilder {
+    if cfg!(feature = "nonboot") {
+        imxrt_rt::RuntimeBuilder::in_flash(family, flash_size, 16 * 1024)
+    } else {
+        imxrt_rt::RuntimeBuilder::from_flexspi(family, flash_size)
+    }
+}
+
 /// Configures the runtime for a variety of boards.
 ///
 /// Note that some automated tests may check these runtimes. Feel free to change
@@ -44,15 +54,12 @@ fn main() {
             .heap_size_env_override("BOARD_HEAP")
             .build()
             .unwrap(),
-            "imxrt1170evk_cm7" => imxrt_rt::RuntimeBuilder::from_flexspi(
-                imxrt_rt::Family::Imxrt1170,
-                16 * 1024 * 1024,
-            )
-            .rodata(imxrt_rt::Memory::Dtcm)
-            .stack_size_env_override("BOARD_STACK")
-            .heap_size_env_override("BOARD_HEAP")
-            .build()
-            .unwrap(),
+            "imxrt1170evk_cm7" => create_runtime(imxrt_rt::Family::Imxrt1170, 8 * 1024 * 1024)
+                .rodata(imxrt_rt::Memory::Dtcm)
+                .stack_size_env_override("BOARD_STACK")
+                .heap_size_env_override("BOARD_HEAP")
+                .build()
+                .unwrap(),
             _ => continue,
         }
         break;

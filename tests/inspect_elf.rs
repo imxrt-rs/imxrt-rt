@@ -39,6 +39,36 @@ fn cargo_build_with_envs(board: &str, envs: &[(&str, &str)]) -> Result<PathBuf> 
     Ok(path)
 }
 
+fn cargo_build_nonboot(board: &str) -> Result<PathBuf> {
+    let status = Command::new("cargo")
+        .arg("build")
+        .arg("--example=blink-rtic")
+        .arg(format!(
+            "--features=board/{},board/rtic,board/nonboot",
+            board
+        ))
+        .arg("--target=thumbv7em-none-eabihf")
+        .arg(format!("--target-dir=target/{}-nonboot", board))
+        .arg("--quiet")
+        .spawn()?
+        .wait()?;
+
+    // TODO(summivox): `ExitStatus::exit_ok()` stabilization (can be chained after the `.wait()?)
+    if !status.success() {
+        return Err(format!(
+            "Building board '{}' failed: process returned {:?}",
+            board, status,
+        )
+        .into());
+    }
+
+    let path = PathBuf::from(format!(
+        "target/{}-nonboot/thumbv7em-none-eabihf/debug/examples/blink-rtic",
+        board
+    ));
+    Ok(path)
+}
+
 /// Build an example, returning a path to the ELF.
 fn cargo_build(board: &str) -> Result<PathBuf> {
     cargo_build_with_envs(board, &[])
@@ -643,4 +673,135 @@ fn imxrt1170evk_cm7() {
         0x3000_0000 < increment_data_xip && increment_data_xip < 0x4000_0000,
         "increment_data is not XiP"
     );
+}
+
+#[test]
+#[ignore = "building an example can take time"]
+fn imxrt1170evk_cm7_nonboot() {
+    const IMAGE_OFFSET: u64 = 16 * 1024;
+    let path = cargo_build_nonboot("imxrt1170evk-cm7").expect("Unable to build example");
+    let contents = fs::read(path).expect("Could not read ELF file");
+    let elf = Elf::parse(&contents).expect("Could not parse ELF");
+
+    let binary = ImxrtBinary::new(&elf, &contents);
+    assert_eq!(binary.symbol_value("__dcd_start"), None);
+    assert_eq!(binary.symbol_value("__dcd_end"), None);
+    assert_eq!(binary.symbol_value("__dcd"), None);
+    assert!(binary.fcb().is_err());
+    assert_eq!(
+        binary.flexram_config().unwrap(),
+        0b1111111111111111_1010101010101010
+    );
+
+    assert!(
+        binary.ivt().is_err(),
+        "Non boot image still contains boot IVT"
+    );
+    assert!(
+        binary.section(".boot").is_err(),
+        "Boot section is included in a non boot image"
+    );
+
+    let stack = binary.section(".stack").unwrap();
+    assert_eq!(
+        Section {
+            address: DTCM,
+            size: 8 * 1024
+        },
+        stack,
+        "stack not at ORIGIN(DTCM), or not 8 KiB large"
+    );
+    assert_eq!(binary.section_lma(".stack"), stack.address);
+
+    let vector_table = binary.section(".vector_table").unwrap();
+    assert_eq!(
+        Section {
+            address: stack.address + stack.size,
+            size: 16 * 4 + 240 * 4
+        },
+        vector_table,
+        "vector table not at expected VMA behind the stack"
+    );
+    assert!(
+        vector_table.address % 1024 == 0,
+        "vector table is not 1024-byte aligned"
+    );
+    assert_eq!(
+        binary.section_lma(".vector_table"),
+        0x3000_0000 + IMAGE_OFFSET
+    );
+
+    let xip = binary.section(".xip").unwrap();
+    // xip's lma==vma
+    assert_eq!(
+        xip.address,
+        0x3000_0000 + IMAGE_OFFSET + vector_table.size,
+        "xip"
+    );
+    assert_eq!(
+        binary.section_lma(".xip"),
+        0x3000_0000 + IMAGE_OFFSET + vector_table.size,
+        "text VMA expected behind vector table"
+    );
+
+    let text = binary.section(".text").unwrap();
+    assert_eq!(text.address, ITCM, "text");
+    assert_eq!(
+        binary.section_lma(".text"),
+        0x3000_0000 + IMAGE_OFFSET + aligned(xip.size, 4) + vector_table.size,
+        "text VMA expected behind vector table"
+    );
+
+    let rodata = binary.section(".rodata").unwrap();
+    assert_eq!(
+        rodata.address,
+        vector_table.address + vector_table.size,
+        "rodata moved to DTCM behind vector table"
+    );
+    assert!(
+        binary.section_lma(".rodata") >= 0x3000_2000 + vector_table.size + aligned(text.size, 4),
+    );
+
+    let data = binary.section(".data").unwrap();
+    assert_eq!(data.address, 0x2024_0000, "data VMA in OCRAM");
+    assert_eq!(
+        data.size, 4,
+        "blink-rtic expected to have a single static mut u32"
+    );
+    assert_eq!(
+        binary.section_lma(".data"),
+        binary.section_lma(".rodata") + aligned(rodata.size, 4),
+        "data LMA starts behind rodata"
+    );
+
+    let bss = binary.section(".bss").unwrap();
+    assert_eq!(
+        bss.address,
+        data.address + aligned(data.size, 4),
+        "bss in OCRAM behind data"
+    );
+    assert_eq!(binary.section_lma(".bss"), bss.address, "bss is NOLOAD");
+
+    let uninit = binary.section(".uninit").unwrap();
+    assert_eq!(
+        uninit.address,
+        bss.address + aligned(bss.size, 4),
+        "uninit in OCRAM behind bss"
+    );
+    assert_eq!(
+        binary.section_lma(".uninit"),
+        uninit.address,
+        "uninit is NOLOAD"
+    );
+
+    let heap = binary.section(".heap").unwrap();
+    assert_eq!(
+        Section {
+            address: rodata.address + aligned(rodata.size, 4),
+            size: 0,
+        },
+        heap,
+        "0 byte heap in DTCM behind rodata table"
+    );
+    assert_eq!(binary.section_lma(".heap"), heap.address, "Heap is NOLOAD");
 }

@@ -78,4 +78,7 @@ SECTIONS
   } > FLASH
 }
 
+ASSERT((__dcd_end - __dcd_start) % 4 == 0, "
+ERROR(imxrt-rt): .dcd (Device Configuration Data) size must be a multiple of 4 bytes.");
+
 /* ===--- End imxrt-boot-header.x ---=== */
