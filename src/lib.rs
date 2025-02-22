@@ -19,7 +19,7 @@
 //! register exceptions, and interrupts. You should be familiar with specifing a linker
 //! script for your embedded project.
 //!
-//! [cmrt]: https://docs.rs/cortex-m-rt/0.7.1/cortex_m_rt/
+//! [cmrt]: https://docs.rs/cortex-m-rt/0.7.3/cortex_m_rt/
 //!
 //! # Dependencies
 //!
@@ -122,7 +122,7 @@
 //!
 //! # Feature flags
 //!
-//! `imxrt-rt` supports the features available in `cortex-m-rt` version 0.7.2. If you enable a feature,
+//! `imxrt-rt` supports the features available in `cortex-m-rt` version 0.7.3. If you enable a feature,
 //! you must enable it in both the `[dependencies]` and `[build-dependencies]` section of your package
 //! manifest. For example, if the `cortex-m-rt` `"device"` feature were needed, then enable this crate's
 //! `"device"` feature in both places.
@@ -153,6 +153,27 @@
 //! other mechanism for running code before `main()`.
 //!
 //! The implementation assumes all flash is FlexSPI.
+//!
+//! ## Using `#[exception]` to register exception handlers
+//!
+//! This section only applies to Cortex-M exception handlers, not device-specific
+//! interrupt handlers. If you're not sure of the difference, consult the [`cortex-m-rt`][cmrt]
+//! documentation.
+//!
+//! Given the way this crate (ab)uses `cortex-m-rt`, and given the way the `cortex-m-rt`
+//! macros work, you may encounter issues using the `#[exception]` macro to register
+//! exception handlers. Fortunately, today's workaround is simple.
+//!
+//! Within the package that registers the exception handler, add a direct dependency
+//! on `cortex-m-rt` 0.7, similar to what's shown below.
+//!
+//! ```toml
+//! [dependencies]
+//! cortex-m-rt = "0.7"
+//! ```
+//!
+//! With this in place, your package should be able to use the `#[exception]` macro
+//! exported by `imxrt-rt`. See the `imxrt-rt` package examples for a demonstration.
 
 #![cfg_attr(all(target_arch = "arm", target_os = "none"), no_std)]
 
