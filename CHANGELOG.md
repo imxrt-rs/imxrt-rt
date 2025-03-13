@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+Place sections starting with `.xip` into the same load region of `.text`.
+Unlike `.text`, the contents in `.xip` will not be relocated.
+
+Four byte align both the `.xip` and `.text` sections for more predictable
+behaviors across linkers.
+
 ## [0.1.6] 2025-03-01
 
 Add new MCU targets:

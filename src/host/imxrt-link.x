@@ -70,14 +70,15 @@ SECTIONS
   __sivector_table = LOADADDR(.vector_table);
 
   /* This section guarantees VMA = LMA to allow the execute-in-place entry point to be inside the image. */
-  .xip :
+  .xip : ALIGN(4)
   {
     /* Included here if not otherwise included in the boot header. */
     *(.Reset);
     *(.__pre_init);
+    *(.xip .xip.*);
   } > REGION_LOAD_TEXT
 
-  .text :
+  .text : ALIGN(4)
   {
     FILL(0xff);
     __stext = .;

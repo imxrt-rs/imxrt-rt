@@ -239,18 +239,19 @@ fn imxrt1010evk() {
     );
     assert_eq!(binary.section_lma(".vector_table"), 0x6000_2000);
 
+    let xip = binary.section(".xip").unwrap();
     let text = binary.section(".text").unwrap();
     assert_eq!(text.address, ITCM, "text");
     assert_eq!(
         binary.section_lma(".text"),
-        0x6000_2000 + vector_table.size,
+        aligned(0x6000_2000 + vector_table.size + xip.size, 4),
         "text VMA expected behind vector table"
     );
 
     let rodata = binary.section(".rodata").unwrap();
     assert_eq!(
         rodata.address,
-        0x6000_2000 + vector_table.size + aligned(text.size, 4),
+        aligned(0x6000_2000 + vector_table.size + text.size + xip.size, 4),
         "rodata LMA & VMA expected behind text"
     );
     assert_eq!(rodata.address, binary.section_lma(".rodata"));
@@ -298,6 +299,12 @@ fn imxrt1010evk() {
     );
     assert_eq!(heap.size, 1024);
     assert_eq!(binary.section_lma(".heap"), heap.address, "Heap is NOLOAD");
+
+    let increment_data_xip = binary.symbol_value("increment_data").unwrap();
+    assert!(
+        0x6000_0000 < increment_data_xip && increment_data_xip < 0x7000_0000,
+        "increment_data is not XiP"
+    );
 }
 
 fn baseline_teensy4(binary: &ImxrtBinary, dcd_at_runtime: u32, stack_size: u64, heap_size: u64) {
@@ -334,6 +341,7 @@ fn baseline_teensy4(binary: &ImxrtBinary, dcd_at_runtime: u32, stack_size: u64, 
     assert_eq!(binary.section_lma(".stack"), stack.address);
 
     let vector_table = binary.section(".vector_table").unwrap();
+    let xip = binary.section(".xip").unwrap();
     assert_eq!(
         Section {
             address: stack.address + stack.size,
@@ -349,14 +357,14 @@ fn baseline_teensy4(binary: &ImxrtBinary, dcd_at_runtime: u32, stack_size: u64, 
     assert_eq!(binary.section_lma(".vector_table"), 0x6000_2000);
 
     let text = binary.section(".text").unwrap();
-    assert_eq!(
-        text.address,
-        binary.section_lma(".vector_table") + vector_table.size,
-        "text"
+    let expected_text_address = aligned(
+        binary.section_lma(".vector_table") + vector_table.size + xip.size,
+        4,
     );
+    assert_eq!(text.address, expected_text_address, "text");
     assert_eq!(
         binary.section_lma(".text"),
-        0x6000_2000 + vector_table.size,
+        aligned(0x6000_2000 + vector_table.size + xip.size, 4),
         "text VMA expected behind vector table"
     );
 
@@ -414,6 +422,12 @@ fn baseline_teensy4(binary: &ImxrtBinary, dcd_at_runtime: u32, stack_size: u64, 
         "{heap_size} byte heap in DTCM behind uninit"
     );
     assert_eq!(binary.section_lma(".heap"), heap.address, "Heap is NOLOAD");
+
+    let increment_data_xip = binary.symbol_value("increment_data").unwrap();
+    assert!(
+        0x6000_0000 < increment_data_xip && increment_data_xip < 0x7000_0000,
+        "increment_data is not XiP"
+    );
 }
 
 #[test]
@@ -562,11 +576,12 @@ fn imxrt1170evk_cm7() {
     );
     assert_eq!(binary.section_lma(".vector_table"), 0x3000_2000);
 
+    let xip = binary.section(".xip").unwrap();
     let text = binary.section(".text").unwrap();
     assert_eq!(text.address, ITCM, "text");
     assert_eq!(
         binary.section_lma(".text"),
-        0x3000_2000 + vector_table.size,
+        aligned(0x3000_2000 + vector_table.size + xip.size, 4),
         "text VMA expected behind vector table"
     );
 
@@ -622,4 +637,10 @@ fn imxrt1170evk_cm7() {
         "0 byte heap in DTCM behind rodata table"
     );
     assert_eq!(binary.section_lma(".heap"), heap.address, "Heap is NOLOAD");
+
+    let increment_data_xip = binary.symbol_value("increment_data").unwrap();
+    assert!(
+        0x3000_0000 < increment_data_xip && increment_data_xip < 0x4000_0000,
+        "increment_data is not XiP"
+    );
 }

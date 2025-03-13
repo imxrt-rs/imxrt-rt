@@ -12,6 +12,13 @@ use imxrt_rt as _;
 /// This is checked in an automated test.
 static mut DATA: u32 = 5;
 
+#[unsafe(link_section = ".xip")]
+#[unsafe(no_mangle)]
+#[inline(never)]
+fn increment_data() {
+    unsafe { crate::DATA = crate::DATA.wrapping_add(1) };
+}
+
 #[rtic::app(device = board::rtic_support, peripherals = false)]
 mod app {
     const PIT_PERIOD_US: u32 = 1_000_000;
@@ -35,7 +42,7 @@ mod app {
 
     #[task(binds = PIT, local = [led, pit])]
     fn pit(cx: pit::Context) {
-        unsafe { crate::DATA += 1 };
+        crate::increment_data();
         cx.local.led.toggle();
         cx.local.pit.clear_interrupts();
     }
