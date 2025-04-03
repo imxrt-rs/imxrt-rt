@@ -18,6 +18,10 @@ Relax cortex-m-rt version specification, providing support for cortex-m-rt
 after 0.7.3. However, it's not guaranteed that this package supports all
 feature flags available in newer versions of cortex-m-rt.
 
+Add a `.bootrom_reservation` section in OCRAM. If you need to reserve this
+OCRAM allocation, you may allocate your own `MaybeUninit` buffer sized for
+your boot ROM's requirements.
+
 ### FlexRAM bank layouts
 
 The runtime builder lets users specify the _layout_, or assignment, of FlexRAM

@@ -61,3 +61,4 @@ imxrt1170evk-cm7 = [
 # Don't try running these on hardware; they might not work.
 __dcd = ["teensy4"]
 __dcd_missize = ["teensy4"]
+__bootrom_reservation = ["teensy4"]

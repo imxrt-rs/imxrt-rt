@@ -176,6 +176,28 @@
 //!
 //! With this in place, your package should be able to use the `#[exception]` macro
 //! exported by `imxrt-rt`. See the `imxrt-rt` package examples for a demonstration.
+//!
+//! # Extras
+//!
+//! The runtime package has extra features to support i.MX RT programs.
+//!
+//! ## Reserving OCRAM for NXP's boot ROM
+//!
+//! If you're using NXP's boot ROM, you may need to reserve a region at the start of
+//! OCRAM for API calls. You can achieve that by placing a buffer into `.bootrom_reservation`.
+//! You're responsible for sizing this buffer depending chip's ROM.
+//!
+//! Here's an example of how to reserve the first 48KiB of OCRAM for the boot ROM.
+//! The example assumes the boot ROM requires at most 48KiB.
+//!
+//! ```
+//! # use core::mem::MaybeUninit;
+//! #[unsafe(link_section = ".bootrom_reservation")]
+//! static ROM_RESERVATION: MaybeUninit<[u8; 48 * 1024]> = MaybeUninit::uninit();
+//! ```
+//!
+//! Without this reservation, this program is allowed to use the lower addresses of
+//! OCRAM without concern for the boot ROM.
 
 #![cfg_attr(all(target_arch = "arm", target_os = "none"), no_std)]
 

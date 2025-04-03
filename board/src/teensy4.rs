@@ -50,3 +50,11 @@ pub static DEVICE_CONFIGURATION_DATA: [u8; 8] = [0xD2, 0x00, 0x08, 0x41, 0xC0, 0
 #[unsafe(no_mangle)]
 #[used]
 pub static DEVICE_CONFIGURATION_DATA: [u8; 7] = [0xD2, 0x00, 0x08, 0x41, 0xC0, 0x00, 0x04];
+
+/// Make sure this reservation appears at the start of OCRAM.
+#[cfg(feature = "__bootrom_reservation")]
+#[unsafe(link_section = ".bootrom_reservation")]
+#[unsafe(no_mangle)]
+#[used]
+pub static BOOTROM_RESERVATION: core::mem::MaybeUninit<[u8; 48 * 1024]> =
+    core::mem::MaybeUninit::new([0; 48 * 1024]);

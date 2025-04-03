@@ -37,6 +37,11 @@ EXTERN(__INTERRUPTS); /* `static` variable similar to `__EXCEPTIONS` */
 /* # Sections */
 SECTIONS
 {
+  .bootrom ORIGIN(OCRAM) (NOLOAD) :
+  {
+    KEEP(*(.bootrom_reservation));
+  } > OCRAM
+
   .stack (NOLOAD) : ALIGN(8)
   {
     __estack = .;

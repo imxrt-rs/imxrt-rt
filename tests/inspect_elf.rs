@@ -217,10 +217,20 @@ struct Fcb {
     size: u64,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 struct Section {
     address: u64,
     size: u64,
+}
+
+impl std::fmt::Debug for Section {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Section")
+            .field("address", &format!("{:#010X}", self.address))
+            .field("size", &self.size)
+            .finish()?;
+        Ok(())
+    }
 }
 
 // No top-level constant for OCRAM, since placement varies
@@ -467,7 +477,13 @@ fn imxrt1010evk_ram() {
     assert!(binary.symbol("Reset").is_some());
 }
 
-fn baseline_teensy4(binary: &ImxrtBinary, dcd_at_runtime: u32, stack_size: u64, heap_size: u64) {
+fn baseline_teensy4(
+    binary: &ImxrtBinary,
+    dcd_at_runtime: u32,
+    stack_start: u64,
+    stack_size: u64,
+    heap_size: u64,
+) {
     assert_eq!(
         Fcb {
             address: 0x6000_0000,
@@ -492,11 +508,11 @@ fn baseline_teensy4(binary: &ImxrtBinary, dcd_at_runtime: u32, stack_size: u64, 
     let stack = binary.section(".stack").unwrap();
     assert_eq!(
         Section {
-            address: DTCM,
+            address: stack_start,
             size: stack_size
         },
         stack,
-        "stack not at ORIGIN(DTCM), or not {stack_size} bytes large"
+        "stack not at {stack_start:#010X}, or not {stack_size} bytes large"
     );
     assert_eq!(binary.section_lma(".stack"), stack.address);
 
@@ -504,11 +520,11 @@ fn baseline_teensy4(binary: &ImxrtBinary, dcd_at_runtime: u32, stack_size: u64, 
     let xip = binary.section(".xip").unwrap();
     assert_eq!(
         Section {
-            address: stack.address + stack.size,
+            address: DTCM,
             size: 16 * 4 + IMXRT1060_INTERRUPTS * 4
         },
         vector_table,
-        "vector table not at expected VMA behind the stack"
+        "vector table not at expected VMA in DTCM"
     );
     assert!(
         vector_table.address.is_multiple_of(1024),
@@ -605,7 +621,28 @@ fn teensy4() {
         binary.symbol_value("__dcd_end")
     );
     assert_eq!(binary.symbol_value("__dcd"), Some(0));
-    baseline_teensy4(&binary, 0, 8 * 1024, 1024);
+    baseline_teensy4(&binary, 0, 0x2020_0000, 8 * 1024, 1024);
+}
+
+#[test]
+#[ignore = "building an example can take time"]
+fn teensy4_bootrom_reservation() {
+    let path = cargo_build("__bootrom_reservation").expect("Unable to build example");
+    let contents = fs::read(path).expect("Could not read ELF file");
+    let elf = Elf::parse(&contents).expect("Could not parse ELF");
+
+    let binary = ImxrtBinary::new(&elf, &contents);
+    let bootrom_reservation = binary.symbol("BOOTROM_RESERVATION").unwrap();
+    assert_eq!(bootrom_reservation.st_value, 0x2020_0000);
+    assert_eq!(bootrom_reservation.st_size, 48 * 1024);
+
+    baseline_teensy4(
+        &binary,
+        0,
+        bootrom_reservation.st_value + bootrom_reservation.st_size,
+        8 * 1024,
+        1024,
+    );
 }
 
 #[test]
@@ -627,7 +664,7 @@ fn teensy4_fake_dcd() {
         binary.symbol_value("__dcd_start"),
     );
     assert_eq!(dcd.st_size % 4, 0);
-    baseline_teensy4(&binary, dcd_start as u32, 8 * 1024, 1024);
+    baseline_teensy4(&binary, dcd_start as u32, 0x2020_0000, 8 * 1024, 1024);
 }
 
 #[test]
@@ -654,7 +691,7 @@ fn teensy4_env_overrides() {
     let elf = Elf::parse(&contents).expect("Could not parse ELF");
 
     let binary = ImxrtBinary::new(&elf, &contents);
-    baseline_teensy4(&binary, 0, 4 * 1024, 8 * 1024);
+    baseline_teensy4(&binary, 0, 0x2020_0000, 4 * 1024, 8 * 1024);
 }
 
 #[test]
@@ -666,7 +703,7 @@ fn teensy4_env_overrides_kib() {
     let elf = Elf::parse(&contents).expect("Could not parse ELF");
 
     let binary = ImxrtBinary::new(&elf, &contents);
-    baseline_teensy4(&binary, 0, 5 * 1024, 9 * 1024);
+    baseline_teensy4(&binary, 0, 0x2020_0000, 5 * 1024, 9 * 1024);
 }
 
 #[test]
