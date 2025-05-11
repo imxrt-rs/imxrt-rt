@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.1.7] 2025-06-14
+
 Introduce `RuntimeBuilder::in_flash` for creating images that can be launched
 by your own software, instead of NXP's boot ROM.
 
@@ -60,6 +62,7 @@ First release. `imxrt-rt` provides a build-time API that defines a memory map,
 as well as a runtime library that configures i.MX RT 10xx and 11xx processors.
 
 [Unreleased]: https://github.com/imxrt-rs/imxrt-rt/compare/v0.1.6...HEAD
+[0.1.7]: https://github.com/imxrt-rs/imxrt-rt/releases/compare/v0.1.6...v0.1.7
 [0.1.6]: https://github.com/imxrt-rs/imxrt-rt/releases/compare/v0.1.5...v0.1.6
 [0.1.5]: https://github.com/imxrt-rs/imxrt-rt/releases/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/imxrt-rs/imxrt-rt/releases/compare/v0.1.3...v0.1.4
