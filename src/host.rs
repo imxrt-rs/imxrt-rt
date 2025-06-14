@@ -796,16 +796,16 @@ impl Family {
     /// any hard-coded values.
     const fn id(self) -> u32 {
         match self {
-            Family::Imxrt1010 => 1010,
-            Family::Imxrt1015 => 1015,
-            Family::Imxrt1020 => 1020,
-            Family::Imxrt1040 => 1040,
-            Family::Imxrt1050 => 1050,
-            Family::Imxrt1060 => 1060,
-            Family::Imxrt1064 => 1064,
-            Family::Imxrt1160 => 1160,
-            Family::Imxrt1170 => 1170,
-            Family::Imxrt1180 => 1180,
+            Family::Imxrt1010 => 0x1010,
+            Family::Imxrt1015 => 0x1015,
+            Family::Imxrt1020 => 0x1020,
+            Family::Imxrt1040 => 0x1040,
+            Family::Imxrt1050 => 0x1050,
+            Family::Imxrt1060 => 0x1060,
+            Family::Imxrt1064 => 0x1064,
+            Family::Imxrt1160 => 0x1160,
+            Family::Imxrt1170 => 0x1170,
+            Family::Imxrt1180 => 0x1180,
         }
     }
     /// How many FlexRAM banks are available?

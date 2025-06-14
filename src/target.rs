@@ -41,10 +41,10 @@ global_asm! {r#"
 
 __pre_init:
     ldr r0, =__imxrt_rt_v0.2        @ Need to know which chip family we're initializing.
-    ldr r1, =1180
+    ldr r1, =0x1180
     cmp r0, r1                      @ Is this an 1180?
     beq 1180f
-    ldr r1, =1100
+    ldr r1, =0x1100
     cmp r0, r1                      @ Is this an 1160 or 1170?
 
     # Disable RTWODOG3.
