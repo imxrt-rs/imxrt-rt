@@ -39,6 +39,22 @@ global_asm! {r#"
 .thumb_func
 .cfi_startproc
 
+.macro copy_section dst, src, end
+    ldr r0, =\dst
+    ldr r2, =\src
+    cmp r2, r0
+    beq 999f
+
+    ldr r1, =\end
+    888:
+    cmp r1, r0
+    beq 999f
+    ldm r2!, {{r3}}
+    stm r0!, {{r3}}
+    b 888b
+    999:
+.endm
+
 __pre_init:
     ldr r0, =__imxrt_rt_v0.2        @ Need to know which chip family we're initializing.
     ldr r1, =0x1180
@@ -77,50 +93,9 @@ __pre_init:
     str r1, [r0, #0]
 
     1000:
-    # Conditionally copy text.
-    ldr r0, =__stext
-    ldr r2, =__sitext
-    cmp r2, r0
-    beq 42f
-
-    ldr r1, =__etext
-    43:
-    cmp r1, r0
-    beq 42f
-    ldm r2!, {{r3}}
-    stm r0!, {{r3}}
-    b 43b
-    42:
-
-    # Conditionally copy the vector table.
-    ldr r0, =__svector_table
-    ldr r2, =__sivector_table
-    cmp r2, r0
-    beq 52f
-
-    ldr r1, =__evector_table
-    53:
-    cmp r1, r0
-    beq 52f
-    ldm r2!, {{r3}}
-    stm r0!, {{r3}}
-    b 53b
-    52:
-
-    # Conditionally copy read-only data.
-    ldr r0, =__srodata
-    ldr r2, =__sirodata
-    cmp r2, r0
-    beq 62f
-
-    ldr r1, =__erodata
-    63:
-    cmp r1, r0
-    beq 62f
-    ldm r2!, {{r3}}
-    stm r0!, {{r3}}
-    b 63b
-    62:
+    copy_section __stext            , __sitext          , __etext
+    copy_section __svector_table    , __sivector_table  , __evector_table
+    copy_section __srodata          , __sirodata        , __erodata
 
     # All done; back to the reset handler.
     bx lr
