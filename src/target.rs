@@ -40,7 +40,7 @@ global_asm! {r#"
 .cfi_startproc
 
 __pre_init:
-    ldr r0, =__imxrt_family         @ Need to know which chip family we're initializing.
+    ldr r0, =__imxrt_rt_v0.2        @ Need to know which chip family we're initializing.
     ldr r1, =1180
     cmp r0, r1                      @ Is this an 1180?
     beq flexram_1180
