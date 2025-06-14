@@ -38,15 +38,15 @@ pub fn prepare(timer_delay_microseconds: u32) -> Option<crate::Resources> {
 
 /// Dummy DCD section containing a single NOP command (for testing linker scripts).
 #[cfg(feature = "__dcd")]
-#[link_section = ".dcd"]
-#[no_mangle]
+#[unsafe(link_section = ".dcd")]
+#[unsafe(no_mangle)]
 #[used]
 pub static DEVICE_CONFIGURATION_DATA: [u8; 8] = [0xD2, 0x00, 0x08, 0x41, 0xC0, 0x00, 0x04, 0x00];
 
 /// Ditto but incorrect size (not a multiple of 4 bytes). The linker script should catch this error
 /// and fail the build.
 #[cfg(feature = "__dcd_missize")]
-#[link_section = ".dcd"]
-#[no_mangle]
+#[unsafe(link_section = ".dcd")]
+#[unsafe(no_mangle)]
 #[used]
 pub static DEVICE_CONFIGURATION_DATA: [u8; 7] = [0xD2, 0x00, 0x08, 0x41, 0xC0, 0x00, 0x04];

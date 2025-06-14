@@ -135,14 +135,8 @@ __pre_init:
 /// The returned pointer is guaranteed to be 4-byte aligned.
 #[inline]
 pub fn heap_end() -> *mut u32 {
-    extern "C" {
+    unsafe extern "C" {
         static mut __eheap: c_void;
     }
-
-    // It used to be unsafe. Keeping it unsafe is backwards
-    // compatible.
-    #[allow(unused_unsafe)]
-    unsafe {
-        core::ptr::addr_of_mut!(__eheap) as _
-    }
+    &raw mut __eheap as _
 }

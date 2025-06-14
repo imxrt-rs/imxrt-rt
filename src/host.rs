@@ -639,12 +639,12 @@ impl RuntimeBuilder {
     fn check_configurations(&self) -> Result<(), String> {
         if self.family.flexram_bank_count() < self.flexram_banks.bank_count() {
             return Err(format!(
-            "Chip {:?} only has {} total FlexRAM banks. Cannot allocate {:?}, a total of {} banks",
-            self.family,
-            self.family.flexram_bank_count(),
-            self.flexram_banks,
-            self.flexram_banks.bank_count()
-        ));
+                "Chip {:?} only has {} total FlexRAM banks. Cannot allocate {:?}, a total of {} banks",
+                self.family,
+                self.family.flexram_bank_count(),
+                self.flexram_banks,
+                self.flexram_banks.bank_count()
+            ));
         }
         if self.flexram_banks.ocram < self.family.bootrom_ocram_banks() {
             return Err(format!(
@@ -653,13 +653,13 @@ impl RuntimeBuilder {
                 self.family.bootrom_ocram_banks()
             ));
         }
-        if let Some(flash_opts) = &self.flash_opts {
-            if !flash_opts.flexspi.supported_for_family(self.family) {
-                return Err(format!(
-                    "Chip {:?} does not support {:?}",
-                    self.family, flash_opts.flexspi
-                ));
-            }
+        if let Some(flash_opts) = &self.flash_opts
+            && !flash_opts.flexspi.supported_for_family(self.family)
+        {
+            return Err(format!(
+                "Chip {:?} does not support {:?}",
+                self.family, flash_opts.flexspi
+            ));
         }
 
         fn prevent_flash(name: &str, memory: Memory) -> Result<(), String> {

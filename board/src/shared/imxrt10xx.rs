@@ -4,7 +4,7 @@ use crate::ral;
 pub(crate) fn prepare_pit(timer_delay_microseconds: u32) -> Option<crate::Pit> {
     #[cfg(feature = "rtic")]
     {
-        extern "C" {
+        unsafe extern "C" {
             // Not actually mut in cortex-m. But, no one is reading it...
             static __INTERRUPTS: [core::cell::UnsafeCell<unsafe extern "C" fn()>; 240];
             fn PIT();
