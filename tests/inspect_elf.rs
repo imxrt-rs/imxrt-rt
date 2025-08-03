@@ -15,9 +15,9 @@ fn cargo_build_with_envs(board: &str, envs: &[(&str, &str)]) -> Result<PathBuf> 
     let status = Command::new("cargo")
         .arg("build")
         .arg("--example=blink-rtic")
-        .arg(format!("--features=board/{},board/rtic", board))
+        .arg(format!("--features=board/{board},board/rtic"))
         .arg("--target=thumbv7em-none-eabihf")
-        .arg(format!("--target-dir=target/{}", board))
+        .arg(format!("--target-dir=target/{board}"))
         .arg("--quiet")
         .envs(envs.iter().copied())
         .spawn()?
@@ -25,16 +25,13 @@ fn cargo_build_with_envs(board: &str, envs: &[(&str, &str)]) -> Result<PathBuf> 
 
     // TODO(summivox): `ExitStatus::exit_ok()` stabilization (can be chained after the `.wait()?)
     if !status.success() {
-        return Err(format!(
-            "Building board '{}' failed: process returned {:?}",
-            board, status,
-        )
-        .into());
+        return Err(
+            format!("Building board '{board}' failed: process returned {status:?}",).into(),
+        );
     }
 
     let path = PathBuf::from(format!(
-        "target/{}/thumbv7em-none-eabihf/debug/examples/blink-rtic",
-        board
+        "target/{board}/thumbv7em-none-eabihf/debug/examples/blink-rtic"
     ));
     Ok(path)
 }
@@ -43,28 +40,22 @@ fn cargo_build_nonboot(board: &str) -> Result<PathBuf> {
     let status = Command::new("cargo")
         .arg("build")
         .arg("--example=blink-rtic")
-        .arg(format!(
-            "--features=board/{},board/rtic,board/nonboot",
-            board
-        ))
+        .arg(format!("--features=board/{board},board/rtic,board/nonboot"))
         .arg("--target=thumbv7em-none-eabihf")
-        .arg(format!("--target-dir=target/{}-nonboot", board))
+        .arg(format!("--target-dir=target/{board}-nonboot"))
         .arg("--quiet")
         .spawn()?
         .wait()?;
 
     // TODO(summivox): `ExitStatus::exit_ok()` stabilization (can be chained after the `.wait()?)
     if !status.success() {
-        return Err(format!(
-            "Building board '{}' failed: process returned {:?}",
-            board, status,
-        )
-        .into());
+        return Err(
+            format!("Building board '{board}' failed: process returned {status:?}",).into(),
+        );
     }
 
     let path = PathBuf::from(format!(
-        "target/{}-nonboot/thumbv7em-none-eabihf/debug/examples/blink-rtic",
-        board
+        "target/{board}-nonboot/thumbv7em-none-eabihf/debug/examples/blink-rtic"
     ));
     Ok(path)
 }

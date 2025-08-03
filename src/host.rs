@@ -121,7 +121,7 @@ impl Display for Memory {
 
 /// Define an alias for `name` that maps to a memory block named `placement`.
 fn region_alias(output: &mut dyn Write, name: &str, placement: Memory) -> io::Result<()> {
-    writeln!(output, "REGION_ALIAS(\"REGION_{}\", {});", name, placement)
+    writeln!(output, "REGION_ALIAS(\"REGION_{name}\", {placement});")
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -664,7 +664,7 @@ impl RuntimeBuilder {
 
         fn prevent_flash(name: &str, memory: Memory) -> Result<(), String> {
             if memory == Memory::Flash {
-                Err(format!("Section '{}' cannot be placed in flash", name))
+                Err(format!("Section '{name}' cannot be placed in flash"))
             } else {
                 Ok(())
             }
@@ -771,8 +771,7 @@ fn write_ram_memory_map(
 ) -> io::Result<()> {
     writeln!(
         output,
-        "/* Memory map for '{:?}' that executes from RAM. */",
-        family,
+        "/* Memory map for '{family:?}' that executes from RAM. */",
     )?;
     writeln!(output, "MEMORY {{")?;
     write_flexram_memories(output, family, flexram_banks)?;
