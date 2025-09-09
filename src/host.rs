@@ -696,19 +696,7 @@ fn write_flexram_memories(
     flexram_banks: &FlexRamBanks,
 ) -> io::Result<()> {
     if flexram_banks.itcm > 0 {
-        let itcm_size = flexram_banks.itcm * family.flexram_bank_size();
-        let itcm_start = match family {
-            Family::Imxrt1010
-            | Family::Imxrt1015
-            | Family::Imxrt1020
-            | Family::Imxrt1040
-            | Family::Imxrt1050
-            | Family::Imxrt1060
-            | Family::Imxrt1064
-            | Family::Imxrt1160
-            | Family::Imxrt1170 => 0x00000000,
-            Family::Imxrt1180 => 0x10000000 - itcm_size,
-        };
+        let (itcm_start, itcm_size) = family.itcm_start_size(flexram_banks.itcm);
         writeln!(
             output,
             "ITCM (RWX) : ORIGIN = {itcm_start:#X}, LENGTH = {itcm_size:#X}"
@@ -798,6 +786,8 @@ pub enum Family {
     Imxrt1180,
 }
 
+/// Adding a new MCU? You'll probably need to update
+/// these methods.
 impl Family {
     /// Family identifier.
     ///
@@ -954,6 +944,28 @@ impl Family {
         }
     }
 
+    /// Returns the start and size of the ITCM memory region.
+    const fn itcm_start_size(self, itcm_banks: u32) -> (u32, u32) {
+        let itcm_size = itcm_banks * self.flexram_bank_size();
+        let itcm_start = match self {
+            Family::Imxrt1010
+            | Family::Imxrt1015
+            | Family::Imxrt1020
+            | Family::Imxrt1040
+            | Family::Imxrt1050
+            | Family::Imxrt1060
+            | Family::Imxrt1064
+            | Family::Imxrt1160
+            | Family::Imxrt1170 => 0x00000000,
+            Family::Imxrt1180 => 0x10000000 - itcm_size,
+        };
+        (itcm_start, itcm_size)
+    }
+}
+
+/// If you're adding a new MCU family, you probably
+/// don't need to change these methods.
+impl Family {
     /// Returns the starting address for the given `flexspi` instance.
     ///
     /// If a FlexSPI instance isn't available for this family, the return
@@ -1071,7 +1083,7 @@ mod tests {
     use super::{Family, FlexRamBanks, RuntimeBuilder};
     use std::{error, io};
 
-    const ALL_FAMILIES: &[Family] = &[
+    const MOST_FAMILIES: &[Family] = &[
         Family::Imxrt1010,
         Family::Imxrt1015,
         Family::Imxrt1020,
@@ -1080,6 +1092,7 @@ mod tests {
         Family::Imxrt1060,
         Family::Imxrt1064,
         Family::Imxrt1170,
+        // Imxrt1180 wasn't ever tested here.
     ];
     type Error = Box<dyn error::Error>;
 
@@ -1171,7 +1184,7 @@ mod tests {
         ];
 
         for (banks, expected) in TABLE {
-            let actual = banks.config(Family::Imxrt1010);
+            let actual = banks.config_gpr();
             assert!(
                 actual == *expected,
                 "\nActual:   {actual:#034b}\nExpected: {expected:#034b}\nBanks: {banks:?}"
@@ -1181,7 +1194,7 @@ mod tests {
 
     #[test]
     fn runtime_builder_default_from_flexspi() -> Result<(), Error> {
-        for family in ALL_FAMILIES {
+        for family in MOST_FAMILIES {
             RuntimeBuilder::from_flexspi(*family, 16 * 1024 * 1024)
                 .write_linker_script(&mut io::sink())?;
         }
@@ -1201,7 +1214,7 @@ mod tests {
             dtcm: 32,
             ocram: 32,
         };
-        for family in ALL_FAMILIES {
+        for family in MOST_FAMILIES {
             let res = RuntimeBuilder::from_flexspi(*family, 16 * 1024)
                 .flexram_banks(banks)
                 .write_linker_script(&mut io::sink());
@@ -1226,13 +1239,34 @@ mod tests {
             placement!(heap),
         ];
 
-        for family in ALL_FAMILIES {
+        for family in MOST_FAMILIES {
             for placement in placements {
                 let mut bldr = RuntimeBuilder::from_flexspi(*family, 16 * 1024);
                 placement.0(&mut bldr);
                 let res = bldr.write_linker_script(&mut io::sink());
                 assert!(res.is_err(), "{:?}, section: {}", family, placement.1);
             }
+        }
+    }
+
+    #[test]
+    fn itcm_start_size() {
+        // Most parts have an ITCM that could touch address 0.
+        for family in MOST_FAMILIES {
+            for itcm_banks in 0..=family.flexram_bank_count() {
+                let (start, size) = family.itcm_start_size(itcm_banks);
+                assert_eq!(start, 0);
+                assert_eq!(size, family.flexram_bank_size() * itcm_banks);
+            }
+        }
+
+        // The 1180's ITCM never touches address 0 when the ITCM banks
+        // are properly configured.
+        let family = Family::Imxrt1180;
+        for itcm_banks in 0..=family.flexram_bank_count() {
+            let (start, size) = family.itcm_start_size(itcm_banks);
+            assert_ne!(start, 0);
+            assert_eq!(size, family.flexram_bank_size() * itcm_banks);
         }
     }
 }
