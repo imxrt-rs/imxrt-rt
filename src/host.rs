@@ -946,7 +946,7 @@ impl Family {
 
     /// Returns the start and size of the ITCM memory region.
     const fn itcm_start_size(self, itcm_banks: u32) -> (u32, u32) {
-        let itcm_size = itcm_banks * self.flexram_bank_size();
+        let mut itcm_size = itcm_banks * self.flexram_bank_size();
         let itcm_start = match self {
             Family::Imxrt1010
             | Family::Imxrt1015
@@ -956,7 +956,13 @@ impl Family {
             | Family::Imxrt1060
             | Family::Imxrt1064
             | Family::Imxrt1160
-            | Family::Imxrt1170 => 0x00000000,
+            | Family::Imxrt1170 => {
+                // Establish a reservation for null pointers.
+                // Note that this reservation is the minimum
+                // size of an MPU region.
+                itcm_size = itcm_size.saturating_sub(32);
+                32
+            }
             Family::Imxrt1180 => 0x10000000 - itcm_size,
         };
         (itcm_start, itcm_size)
@@ -1252,11 +1258,16 @@ mod tests {
     #[test]
     fn itcm_start_size() {
         // Most parts have an ITCM that could touch address 0.
+        // However, the implementation reserves an MPU region
+        // at address 0.
         for family in MOST_FAMILIES {
             for itcm_banks in 0..=family.flexram_bank_count() {
                 let (start, size) = family.itcm_start_size(itcm_banks);
-                assert_eq!(start, 0);
-                assert_eq!(size, family.flexram_bank_size() * itcm_banks);
+                assert_eq!(start, 32);
+                assert_eq!(
+                    size,
+                    (family.flexram_bank_size() * itcm_banks).saturating_sub(32)
+                );
             }
         }
 

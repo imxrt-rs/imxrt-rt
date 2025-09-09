@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+Establish a 32 byte reservation at the start of ITCM where instructions are
+never placed. This reduces the total capacity of ITCM by 32 bytes on nearly
+all MCUs, except the 1180.
+
 ## [0.1.7] 2025-06-14
 
 Introduce `RuntimeBuilder::in_flash` for creating images that can be launched

@@ -198,7 +198,7 @@ struct Section {
 }
 
 const DTCM: u64 = 0x2000_0000;
-const ITCM: u64 = 0x0000_0000;
+const ITCM: u64 = 0x0000_0020;
 
 const fn aligned(value: u64, alignment: u64) -> u64 {
     (value + (alignment - 1)) & !(alignment - 1)
