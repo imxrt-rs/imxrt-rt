@@ -255,7 +255,7 @@ fn imxrt1010evk() {
         "vector table not at expected VMA behind the stack"
     );
     assert!(
-        vector_table.address % 1024 == 0,
+        vector_table.address.is_multiple_of(1024),
         "vector table is not 1024-byte aligned"
     );
     assert_eq!(binary.section_lma(".vector_table"), 0x6000_2000);
@@ -372,7 +372,7 @@ fn baseline_teensy4(binary: &ImxrtBinary, dcd_at_runtime: u32, stack_size: u64, 
         "vector table not at expected VMA behind the stack"
     );
     assert!(
-        vector_table.address % 1024 == 0,
+        vector_table.address.is_multiple_of(1024),
         "vector table is not 1024-byte aligned"
     );
     assert_eq!(binary.section_lma(".vector_table"), 0x6000_2000);
@@ -592,7 +592,7 @@ fn imxrt1170evk_cm7() {
         "vector table not at expected VMA behind the stack"
     );
     assert!(
-        vector_table.address % 1024 == 0,
+        vector_table.address.is_multiple_of(1024),
         "vector table is not 1024-byte aligned"
     );
     assert_eq!(binary.section_lma(".vector_table"), 0x3000_2000);
@@ -714,7 +714,7 @@ fn imxrt1170evk_cm7_nonboot() {
         "vector table not at expected VMA behind the stack"
     );
     assert!(
-        vector_table.address % 1024 == 0,
+        vector_table.address.is_multiple_of(1024),
         "vector table is not 1024-byte aligned"
     );
     assert_eq!(
