@@ -6,6 +6,16 @@ Establish a 32 byte reservation at the start of ITCM where instructions are
 never placed. This reduces the total capacity of ITCM by 32 bytes on nearly
 all MCUs, except the 1180.
 
+### FlexRAM bank layouts
+
+The runtime builder lets users specify the _layout_, or assignment, of FlexRAM
+banks. This is more precise than the _count_ of banks.
+
+By default, the layout remains an implementation detail of the builder. This is
+true if you only specify the count, or if you make no choice. However, if you
+specify the layout, the builder guarantees that the FlexRAM banks will match
+that layout.
+
 ## [0.1.7] 2025-06-14
 
 Introduce `RuntimeBuilder::in_flash` for creating images that can be launched

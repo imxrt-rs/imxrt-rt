@@ -238,8 +238,8 @@ impl EnvOverride {
 /// let family = Family::Imxrt1060;
 ///
 /// let mut b = RuntimeBuilder::from_flexspi(family, FLASH_SIZE);
-/// // FlexRAM banks represent default fuse values.
-/// b.flexram_banks(family.default_flexram_banks());
+/// // FlexRAM layout represent default fuse values.
+/// b.flexram_layout(&family.default_flexram_layout());
 /// b.text(Memory::Itcm);    // Copied from flash.
 /// b.rodata(Memory::Ocram); // Copied from flash.
 /// b.data(Memory::Ocram);   // Copied from flash.
@@ -252,6 +252,18 @@ impl EnvOverride {
 /// b.heap_size(0);          // ...but no space given to the heap.
 ///
 /// assert_eq!(b, RuntimeBuilder::from_flexspi(family, FLASH_SIZE));
+/// ```
+///
+/// Note that, if you specify [`FlexRamBanks`], the corresponding
+/// layout may be different than the default layout.
+///
+/// ```
+/// # use imxrt_rt::{Family, RuntimeBuilder, Memory};
+/// # const FLASH_SIZE: usize = 16 * 1024;
+/// # let family = Family::Imxrt1060;
+/// let mut b = RuntimeBuilder::from_flexspi(family, FLASH_SIZE);
+/// b.flexram_banks(family.default_flexram_banks());
+/// assert_ne!(b, RuntimeBuilder::from_flexspi(family, FLASH_SIZE));
 /// ```
 ///
 /// # Environment overrides
@@ -321,7 +333,7 @@ impl EnvOverride {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RuntimeBuilder {
     family: Family,
-    flexram_banks: FlexRamBanks,
+    flexram_layout: Vec<FlexRamKind>,
     text: Memory,
     rodata: Memory,
     data: Memory,
@@ -346,7 +358,7 @@ impl RuntimeBuilder {
     pub fn from_flexspi(family: Family, flash_size: usize) -> Self {
         Self {
             family,
-            flexram_banks: family.default_flexram_banks(),
+            flexram_layout: family.default_flexram_layout(),
             text: Memory::Itcm,
             rodata: Memory::Ocram,
             data: Memory::Ocram,
@@ -382,7 +394,7 @@ impl RuntimeBuilder {
     pub fn in_flash(family: Family, partition_size: usize, partition_offset: u32) -> Self {
         Self {
             family,
-            flexram_banks: family.default_flexram_banks(),
+            flexram_layout: family.default_flexram_layout(),
             text: Memory::Itcm,
             rodata: Memory::Ocram,
             data: Memory::Ocram,
@@ -406,7 +418,7 @@ impl RuntimeBuilder {
     pub fn from_ram(family: Family) -> Self {
         Self {
             family,
-            flexram_banks: family.default_flexram_banks(),
+            flexram_layout: family.default_flexram_layout(),
             text: Memory::Itcm,
             rodata: Memory::Ocram,
             data: Memory::Ocram,
@@ -428,9 +440,19 @@ impl RuntimeBuilder {
     /// See the `FlexRamBanks` documentation for requirements on the
     /// bank allocations.
     pub fn flexram_banks(&mut self, flexram_banks: FlexRamBanks) -> &mut Self {
-        self.flexram_banks = flexram_banks;
+        self.flexram_layout(&flexram_banks.to_flexram_layout())
+    }
+
+    /// Set the FlexRAM bank layout.
+    ///
+    /// Use this to customize the sizes of DTCM, ITCM, and OCRAM.
+    /// This also gives control of the bank assignment in the FlexRAM
+    /// controller.
+    pub fn flexram_layout(&mut self, flexram_layout: &[FlexRamKind]) -> &mut Self {
+        self.flexram_layout = Vec::from(flexram_layout);
         self
     }
+
     /// Set the memory placement for code.
     pub fn text(&mut self, memory: Memory) -> &mut Self {
         self.text = memory;
@@ -581,7 +603,7 @@ impl RuntimeBuilder {
         self.check_configurations()?;
 
         if let Some(flash_opts) = &self.flash_opts {
-            write_flash_memory_map(writer, self.family, flash_opts, &self.flexram_banks)?;
+            write_flash_memory_map(writer, self.family, flash_opts, &self.flexram_layout)?;
 
             if flash_opts.is_boot_image() {
                 let boot_header_x = match self.family {
@@ -599,7 +621,7 @@ impl RuntimeBuilder {
                 writer.write_all(boot_header_x)?;
             }
         } else {
-            write_ram_memory_map(writer, self.family, &self.flexram_banks)?;
+            write_ram_memory_map(writer, self.family, &self.flexram_layout)?;
         }
 
         #[cfg(feature = "device")]
@@ -641,7 +663,7 @@ impl RuntimeBuilder {
         writeln!(
             writer,
             "__flexram_config = {:#010X};",
-            self.flexram_banks.config(self.family)
+            flexram_config(self.family, &self.flexram_layout)
         )?;
         // The target runtime looks at this value to predicate some pre-init instructions.
         // Could be helpful for binary identification, but it's an undocumented feature.
@@ -658,16 +680,17 @@ impl RuntimeBuilder {
     /// This might not check everything! If the linker may detect a condition, we'll
     /// let the linker do that.
     fn check_configurations(&self) -> Result<(), String> {
-        if self.family.flexram_bank_count() < self.flexram_banks.bank_count() {
+        if self.family.flexram_bank_count() < self.flexram_layout.len() {
             return Err(format!(
                 "Chip {:?} only has {} total FlexRAM banks. Cannot allocate {:?}, a total of {} banks",
                 self.family,
                 self.family.flexram_bank_count(),
-                self.flexram_banks,
-                self.flexram_banks.bank_count()
+                self.flexram_layout,
+                self.flexram_layout.len(),
             ));
         }
-        if self.flexram_banks.ocram < self.family.bootrom_ocram_banks() {
+        let ocram_count = layout_count_of(FlexRamKind::Ocram, &self.flexram_layout);
+        if ocram_count < self.family.bootrom_ocram_banks() {
             return Err(format!(
                 "Chip {:?} requires at least {} OCRAM banks for the bootloader ROM",
                 self.family,
@@ -714,25 +737,28 @@ impl RuntimeBuilder {
 fn write_flexram_memories(
     output: &mut dyn Write,
     family: Family,
-    flexram_banks: &FlexRamBanks,
+    flexram_layout: &[FlexRamKind],
 ) -> io::Result<()> {
-    if flexram_banks.itcm > 0 {
-        let (itcm_start, itcm_size) = family.itcm_start_size(flexram_banks.itcm);
+    let itcm_count = layout_count_of(FlexRamKind::Itcm, flexram_layout);
+    let dtcm_count = layout_count_of(FlexRamKind::Dtcm, flexram_layout);
+    let ocram_count = layout_count_of(FlexRamKind::Ocram, flexram_layout);
+
+    if itcm_count > 0 {
+        let (itcm_start, itcm_size) = family.itcm_start_size(itcm_count);
         writeln!(
             output,
             "ITCM (RWX) : ORIGIN = {itcm_start:#X}, LENGTH = {itcm_size:#X}"
         )?;
     }
-    if flexram_banks.dtcm > 0 {
+    if dtcm_count > 0 {
         writeln!(
             output,
             "DTCM (RWX) : ORIGIN = 0x20000000, LENGTH = {:#X}",
-            flexram_banks.dtcm * family.flexram_bank_size(),
+            dtcm_count * family.flexram_bank_size(),
         )?;
     }
 
-    let ocram_size =
-        flexram_banks.ocram * family.flexram_bank_size() + family.dedicated_ocram_size();
+    let ocram_size = ocram_count * family.flexram_bank_size() + family.dedicated_ocram_size();
     if ocram_size > 0 {
         writeln!(
             output,
@@ -749,7 +775,7 @@ fn write_flash_memory_map(
     output: &mut dyn Write,
     family: Family,
     flash_opts: &FlashOpts,
-    flexram_banks: &FlexRamBanks,
+    flexram_layout: &[FlexRamKind],
 ) -> io::Result<()> {
     writeln!(
         output,
@@ -763,7 +789,7 @@ fn write_flash_memory_map(
         flash_opts.flash_origin(family).expect("Already checked"),
         flash_opts.size
     )?;
-    write_flexram_memories(output, family, flexram_banks)?;
+    write_flexram_memories(output, family, flexram_layout)?;
     writeln!(output, "}}")?;
     writeln!(output, "__fcb_offset = {:#X};", family.fcb_offset())?;
     Ok(())
@@ -776,14 +802,14 @@ fn write_flash_memory_map(
 fn write_ram_memory_map(
     output: &mut dyn Write,
     family: Family,
-    flexram_banks: &FlexRamBanks,
+    flexram_layout: &[FlexRamKind],
 ) -> io::Result<()> {
     writeln!(
         output,
         "/* Memory map for '{family:?}' that executes from RAM. */",
     )?;
     writeln!(output, "MEMORY {{")?;
-    write_flexram_memories(output, family, flexram_banks)?;
+    write_flexram_memories(output, family, flexram_layout)?;
     writeln!(output, "}}")?;
     Ok(())
 }
@@ -830,7 +856,7 @@ impl Family {
         }
     }
     /// How many FlexRAM banks are available?
-    pub const fn flexram_bank_count(self) -> u32 {
+    pub const fn flexram_bank_count(self) -> usize {
         match self {
             Family::Imxrt1010 | Family::Imxrt1015 => 4,
             Family::Imxrt1020 => 8,
@@ -841,7 +867,7 @@ impl Family {
         }
     }
     /// How large (bytes) is each FlexRAM bank?
-    const fn flexram_bank_size(self) -> u32 {
+    const fn flexram_bank_size(self) -> usize {
         match self {
             Family::Imxrt1010
             | Family::Imxrt1015
@@ -856,7 +882,7 @@ impl Family {
         }
     }
     /// How many OCRAM banks does the boot ROM need?
-    const fn bootrom_ocram_banks(self) -> u32 {
+    const fn bootrom_ocram_banks(self) -> usize {
         match self {
             Family::Imxrt1010
             | Family::Imxrt1015
@@ -910,7 +936,7 @@ impl Family {
     /// What's the size, in bytes, of the dedicated OCRAM section?
     ///
     /// This isn't supported by all chips.
-    const fn dedicated_ocram_size(self) -> u32 {
+    const fn dedicated_ocram_size(self) -> usize {
         match self {
             Family::Imxrt1010
             | Family::Imxrt1015
@@ -932,7 +958,8 @@ impl Family {
 
     /// Returns the default FlexRAM bank allocations for this chip.
     ///
-    /// The default values represent the all-zero fuse values.
+    /// The default values represent the all-zero fuse values. However,
+    /// the layout is an implementation detail.
     pub fn default_flexram_banks(self) -> FlexRamBanks {
         match self {
             Family::Imxrt1010 | Family::Imxrt1015 => FlexRamBanks {
@@ -965,8 +992,74 @@ impl Family {
         }
     }
 
+    /// Returns the default FlexRAM bank layout for this chip.
+    ///
+    /// The default values represent the all-zero fuse values.
+    /// See AN12077 for details.
+    pub fn default_flexram_layout(self) -> Vec<FlexRamKind> {
+        match self {
+            Family::Imxrt1010 | Family::Imxrt1015 => vec![
+                FlexRamKind::Ocram,
+                FlexRamKind::Ocram,
+                FlexRamKind::Dtcm,
+                FlexRamKind::Itcm,
+            ],
+            Family::Imxrt1020 => vec![
+                FlexRamKind::Ocram,
+                FlexRamKind::Ocram,
+                FlexRamKind::Dtcm,
+                FlexRamKind::Dtcm,
+                FlexRamKind::Itcm,
+                FlexRamKind::Itcm,
+                FlexRamKind::Ocram,
+                FlexRamKind::Ocram,
+            ],
+            // 1040 layout described in table 22-9 of the RM.
+            // It's not convered in AN12077.
+            Family::Imxrt1040 | Family::Imxrt1050 | Family::Imxrt1060 | Family::Imxrt1064 => vec![
+                FlexRamKind::Ocram,
+                FlexRamKind::Ocram,
+                FlexRamKind::Ocram,
+                FlexRamKind::Ocram,
+                FlexRamKind::Dtcm,
+                FlexRamKind::Dtcm,
+                FlexRamKind::Itcm,
+                FlexRamKind::Itcm,
+                FlexRamKind::Itcm,
+                FlexRamKind::Itcm,
+                FlexRamKind::Dtcm,
+                FlexRamKind::Dtcm,
+                FlexRamKind::Ocram,
+                FlexRamKind::Ocram,
+                FlexRamKind::Ocram,
+                FlexRamKind::Ocram,
+            ],
+            Family::Imxrt1160 | Family::Imxrt1170 => vec![
+                FlexRamKind::Dtcm,
+                FlexRamKind::Dtcm,
+                FlexRamKind::Dtcm,
+                FlexRamKind::Dtcm,
+                FlexRamKind::Itcm,
+                FlexRamKind::Itcm,
+                FlexRamKind::Itcm,
+                FlexRamKind::Itcm,
+                FlexRamKind::Dtcm,
+                FlexRamKind::Dtcm,
+                FlexRamKind::Dtcm,
+                FlexRamKind::Dtcm,
+                FlexRamKind::Itcm,
+                FlexRamKind::Itcm,
+                FlexRamKind::Itcm,
+                FlexRamKind::Itcm,
+            ],
+            // Layout doesn't matter; we only have three
+            // configurations.
+            Family::Imxrt1180 => vec![FlexRamKind::Itcm, FlexRamKind::Dtcm],
+        }
+    }
+
     /// Returns the start and size of the ITCM memory region.
-    const fn itcm_start_size(self, itcm_banks: u32) -> (u32, u32) {
+    const fn itcm_start_size(self, itcm_banks: usize) -> (usize, usize) {
         let mut itcm_size = itcm_banks * self.flexram_bank_size();
         let itcm_start = match self {
             Family::Imxrt1010
@@ -1021,6 +1114,12 @@ impl Family {
 /// banks are disabled.
 ///
 /// Banks are typically 32KiB large.
+///
+/// If you need to control the _layout_, or assignment, of FlexRAM
+/// banks, you should define your own collection of [`FlexRamKind`]
+/// and use [`flexram_layout`](RuntimeBuilder::flexram_layout) to
+/// set the layout. If you use this to select the bank counts, the
+/// builder applies an unspecified layout.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FlexRamBanks {
     /// How many banks are allocated for OCRAM?
@@ -1033,73 +1132,81 @@ pub struct FlexRamBanks {
     /// allocates those automatically. In fact, if your chip includes
     /// dedicated OCRAM, you may set this to zero in order to maximize
     /// DTCM and ITCM utilization.
-    pub ocram: u32,
+    pub ocram: usize,
     /// How many banks are allocated for ITCM?
-    pub itcm: u32,
+    pub itcm: usize,
     /// How many banks are allocated for DTCM?
-    pub dtcm: u32,
+    pub dtcm: usize,
 }
 
 impl FlexRamBanks {
-    /// Total FlexRAM banks.
-    const fn bank_count(&self) -> u32 {
-        self.ocram + self.itcm + self.dtcm
-    }
-
-    /// Produces the FlexRAM configuration.
-    fn config(&self, family: Family) -> u32 {
-        match family {
-            Family::Imxrt1010
-            | Family::Imxrt1015
-            | Family::Imxrt1020
-            | Family::Imxrt1040
-            | Family::Imxrt1050
-            | Family::Imxrt1060
-            | Family::Imxrt1064
-            | Family::Imxrt1160
-            | Family::Imxrt1170 => self.config_gpr(),
-            Family::Imxrt1180 => self.config_1180(),
+    /// Convert the banks into some kind of FlexRAM bank layout.
+    fn to_flexram_layout(self) -> Vec<FlexRamKind> {
+        let mut layout = Vec::with_capacity(self.ocram + self.dtcm + self.itcm);
+        for _ in 0..self.ocram {
+            layout.push(FlexRamKind::Ocram);
         }
-    }
-
-    /// Produces the FlexRAM configuration for families using GPR17.
-    fn config_gpr(&self) -> u32 {
-        assert!(
-            self.bank_count() <= 16,
-            "Something is wrong; this should have been checked earlier."
-        );
-
-        // If a FlexRAM memory type could be allocated
-        // to _all_ memory banks, these would represent
-        // the configuration masks...
-        const OCRAM: u32 = 0x5555_5555; // 0b01...
-        const DTCM: u32 = 0xAAAA_AAAA; // 0b10...
-        const ITCM: u32 = 0xFFFF_FFFF; // 0b11...
-
-        fn mask(bank_count: u32) -> u32 {
-            1u32.checked_shl(bank_count * 2)
-                .map(|bit| bit - 1)
-                .unwrap_or(u32::MAX)
+        for _ in 0..self.dtcm {
+            layout.push(FlexRamKind::Dtcm);
         }
-
-        let ocram_mask = mask(self.ocram);
-        let dtcm_mask = mask(self.dtcm).checked_shl(self.ocram * 2).unwrap_or(0);
-        let itcm_mask = mask(self.itcm)
-            .checked_shl((self.ocram + self.dtcm) * 2)
-            .unwrap_or(0);
-
-        (OCRAM & ocram_mask) | (DTCM & dtcm_mask) | (ITCM & itcm_mask)
+        for _ in 0..self.itcm {
+            layout.push(FlexRamKind::Itcm);
+        }
+        layout
     }
+}
 
-    fn config_1180(&self) -> u32 {
-        match (self.itcm, self.dtcm, self.ocram) {
+/// Describes how a FlexRAM bank is being used.
+///
+/// These are the elements of a "layout," usually
+/// represented by `&[FlexRamKind]`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u32)]
+pub enum FlexRamKind {
+    /// It's not used at all.
+    Unused = 0,
+    /// This bank is an OCRAM bank.
+    ///
+    /// Remember that these are FlexRAM banks, not dedicated
+    /// OCRAM banks.
+    Ocram = 1,
+    /// This is a DTCM bank.
+    Dtcm = 2,
+    /// This is an ITCM bank.
+    Itcm = 3,
+}
+
+/// Count how may RAM kinds there are in this layout.
+fn layout_count_of(kind: FlexRamKind, layout: &[FlexRamKind]) -> usize {
+    layout.iter().filter(|k| **k == kind).count()
+}
+
+/// Produce the `u32` describing the FlexRAM configuration
+/// for the MCU.
+fn flexram_config(family: Family, layout: &[FlexRamKind]) -> u32 {
+    assert!(
+        layout.len() <= family.flexram_bank_count(),
+        "FlexRAM layout contains too many banks for {family:?}"
+    );
+
+    if family == Family::Imxrt1180 {
+        let itcm_count = layout_count_of(FlexRamKind::Itcm, layout);
+        let dtcm_count = layout_count_of(FlexRamKind::Dtcm, layout);
+        let ocram_count = layout_count_of(FlexRamKind::Ocram, layout);
+        match (itcm_count, dtcm_count, ocram_count) {
             (1, 1, 0) => 0b00_u32,
             (2, 0, 0) => 0b10,
             (0, 2, 0) => 0b01,
             _ => panic!("Unsupported FlexRAM configuration"),
         }
-        .checked_shl(2)
-        .unwrap()
+    } else {
+        let mut mask = 0;
+        let mut shift = 0;
+        for kind in layout {
+            mask |= (*kind as u32) << shift;
+            shift += 2;
+        }
+        mask
     }
 }
 
@@ -1211,7 +1318,8 @@ mod tests {
         ];
 
         for (banks, expected) in TABLE {
-            let actual = banks.config_gpr();
+            // Select a family that has all 16 banks available.
+            let actual = super::flexram_config(Family::Imxrt1170, &banks.to_flexram_layout());
             assert!(
                 actual == *expected,
                 "\nActual:   {actual:#034b}\nExpected: {expected:#034b}\nBanks: {banks:?}"
@@ -1299,6 +1407,30 @@ mod tests {
             let (start, size) = family.itcm_start_size(itcm_banks);
             assert_ne!(start, 0);
             assert_eq!(size, family.flexram_bank_size() * itcm_banks);
+        }
+    }
+
+    #[test]
+    fn default_flexram_layouts() {
+        let cases = [
+            (Family::Imxrt1010, 0b11100101),
+            (Family::Imxrt1015, 0b11100101),
+            (Family::Imxrt1020, 0b0101111110100101),
+            (Family::Imxrt1040, 0b01010101101011111111101001010101),
+            (Family::Imxrt1050, 0b01010101101011111111101001010101),
+            (Family::Imxrt1060, 0b01010101101011111111101001010101),
+            (Family::Imxrt1064, 0b01010101101011111111101001010101),
+            (Family::Imxrt1160, 0b11111111101010101111111110101010),
+            (Family::Imxrt1170, 0b11111111101010101111111110101010),
+            (Family::Imxrt1180, 0b00),
+        ];
+        for (family, expected) in cases {
+            let layout = family.default_flexram_layout();
+            let actual = super::flexram_config(family, &layout);
+            assert_eq!(
+                actual, expected,
+                "{family:?} {actual:#010X} {expected:#010X}"
+            );
         }
     }
 }

@@ -139,11 +139,13 @@
 //!
 //! # Limitations
 //!
-//! The crate considers the assignment of FlexRAM memory banks to ITCM/DTCM/OCRAM
-//! an implementation detail. Additionally, the implementation does not care
-//! about the assignment of memory bank power domains. This seems to matter most on
-//! the 1050, which has the widest spread of bank-to-power domain assignment
-//! (according to AN12077).
+//! By default, the crate considers the assignment of FlexRAM memory banks to
+//! ITCM/DTCM/OCRAM an implementation detail. If you must define the assignment,
+//! you can specify your own layout by using [`flexram_layout`](RuntimeBuilder::flexram_layout).
+//!
+//! Additionally, the implementation does not care about the assignment of memory bank power
+//! domains. This seems to matter most on the 1050, which has the widest spread of bank-to-power
+//! domain assignment (according to AN12077).
 //!
 //! There is no support for ECC on 1160 or 1170. The runtime assumes that OCRAM and TCM ECC
 //! is disabled, and that the corresponding memory banks can be used for OCRAM.

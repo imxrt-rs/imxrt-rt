@@ -667,10 +667,7 @@ fn imxrt1170evk_cm7() {
         },
         binary.fcb().unwrap()
     );
-    assert_eq!(
-        binary.flexram_config().unwrap(),
-        0b1111111111111111_1010101010101010
-    );
+    assert_eq!(binary.flexram_config().unwrap(), 0xFFAAFFAA);
 
     let ivt = binary.ivt().unwrap();
     assert_eq!(ivt.magic_header, 0x402000D1);
@@ -790,10 +787,7 @@ fn imxrt1170evk_cm7_nonboot() {
     assert_eq!(binary.symbol_value("__dcd_end"), None);
     assert_eq!(binary.symbol_value("__dcd"), None);
     assert!(binary.fcb().is_err());
-    assert_eq!(
-        binary.flexram_config().unwrap(),
-        0b1111111111111111_1010101010101010
-    );
+    assert_eq!(binary.flexram_config().unwrap(), 0xFFAAFFAA);
 
     assert!(
         binary.ivt().is_err(),
