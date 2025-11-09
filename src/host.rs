@@ -624,7 +624,7 @@ impl RuntimeBuilder {
         )?;
         // The target runtime looks at this value to predicate some pre-init instructions.
         // Could be helpful for binary identification, but it's an undocumented feature.
-        writeln!(writer, "__imxrt_rt_v0.2 = {};", self.family.id(),)?;
+        writeln!(writer, "__imxrt_rt_v0.2 = {:#010X};", self.family.id(),)?;
 
         let link_x = include_bytes!("host/imxrt-link.x");
         writer.write_all(link_x)?;
