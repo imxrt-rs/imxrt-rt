@@ -6,6 +6,11 @@ Establish a 32 byte reservation at the start of ITCM where instructions are
 never placed. This reduces the total capacity of ITCM by 32 bytes on nearly
 all MCUs, except the 1180.
 
+Provide a `RuntimeBuilder::device_script_name` method to change the name of
+the device linker script that's included in the runtime. By default, the name
+remains `device.x`. The name only matters if the "device" crate feature is
+enabled.
+
 ### FlexRAM bank layouts
 
 The runtime builder lets users specify the _layout_, or assignment, of FlexRAM

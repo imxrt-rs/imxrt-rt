@@ -229,7 +229,7 @@ impl EnvOverride {
 /// # Default values
 ///
 /// The example below demonstrates the default `RuntimeBuilder` memory placements,
-/// stack sizes, and heap sizes.
+/// stack sizes, heap sizes, and additional configurations.
 ///
 /// ```
 /// use imxrt_rt::{Family, RuntimeBuilder, Memory};
@@ -250,6 +250,8 @@ impl EnvOverride {
 /// b.stack_size(8 * 1024);  // 8 KiB stack.
 /// b.heap(Memory::Dtcm);    // Heap in DTCM...
 /// b.heap_size(0);          // ...but no space given to the heap.
+/// b.linker_script_name("imxrt-link.x");
+/// b.device_script_name("device.x");
 ///
 /// assert_eq!(b, RuntimeBuilder::from_flexspi(family, FLASH_SIZE));
 /// ```
@@ -346,9 +348,11 @@ pub struct RuntimeBuilder {
     heap_size: EnvOverride,
     flash_opts: Option<FlashOpts>,
     linker_script_name: String,
+    device_script_name: String,
 }
 
 const DEFAULT_LINKER_SCRIPT_NAME: &str = "imxrt-link.x";
+const DEFAULT_DEVICE_SCRIPT_NAME: &str = "device.x";
 
 impl RuntimeBuilder {
     /// Creates a runtime that can execute and load contents from
@@ -375,6 +379,7 @@ impl RuntimeBuilder {
                 flexspi: FlexSpi::family_default(family),
             }),
             linker_script_name: DEFAULT_LINKER_SCRIPT_NAME.into(),
+            device_script_name: DEFAULT_DEVICE_SCRIPT_NAME.into(),
         }
     }
 
@@ -411,6 +416,7 @@ impl RuntimeBuilder {
                 flexspi: FlexSpi::family_default(family),
             }),
             linker_script_name: DEFAULT_LINKER_SCRIPT_NAME.into(),
+            device_script_name: DEFAULT_DEVICE_SCRIPT_NAME.into(),
         }
     }
 
@@ -431,6 +437,7 @@ impl RuntimeBuilder {
             heap_size: EnvOverride::new(0),
             flash_opts: None,
             linker_script_name: DEFAULT_LINKER_SCRIPT_NAME.into(),
+            device_script_name: DEFAULT_DEVICE_SCRIPT_NAME.into(),
         }
     }
 
@@ -544,6 +551,20 @@ impl RuntimeBuilder {
         self
     }
 
+    /// Set the name of the device's linker file that's included by the
+    /// runtime's linker script.
+    ///
+    /// By default, the device PAC is expected to place a file named
+    /// `device.x` on the linker search path. The runtime's linker script
+    /// includes that `device.x` file when the "device" crate feature is
+    /// enabled.
+    ///
+    /// This method lets you change the name of that included file.
+    pub fn device_script_name(&mut self, name: &str) -> &mut Self {
+        self.device_script_name = name.into();
+        self
+    }
+
     /// Commit the runtime configuration.
     ///
     /// `build()` ensures that the generated linker script is available to the
@@ -624,8 +645,9 @@ impl RuntimeBuilder {
             write_ram_memory_map(writer, self.family, &self.flexram_layout)?;
         }
 
-        #[cfg(feature = "device")]
-        writeln!(writer, "INCLUDE device.x")?;
+        if cfg!(feature = "device") {
+            writeln!(writer, "INCLUDE {}", self.device_script_name)?;
+        }
 
         // Keep these alias names in sync with the primary linker script.
         // The main linker script uses these region aliases for placing
