@@ -206,6 +206,10 @@ const fn aligned(value: u64, alignment: u64) -> u64 {
     (value + (alignment - 1)) & !(alignment - 1)
 }
 
+const IMXRT1010_INTERRUPTS: u64 = 80;
+const IMXRT1060_INTERRUPTS: u64 = 158;
+const IMXRT1170_INTERRUPTS: u64 = 218;
+
 #[test]
 #[ignore = "building an example can take time"]
 fn imxrt1010evk() {
@@ -251,7 +255,7 @@ fn imxrt1010evk() {
     assert_eq!(
         Section {
             address: stack.address + stack.size,
-            size: 16 * 4 + 240 * 4
+            size: 16 * 4 + IMXRT1010_INTERRUPTS * 4
         },
         vector_table,
         "vector table not at expected VMA behind the stack"
@@ -355,7 +359,7 @@ fn imxrt1010evk_ram() {
     assert_eq!(
         Section {
             address: stack.address + stack.size,
-            size: 16 * 4 + 240 * 4
+            size: 16 * 4 + IMXRT1010_INTERRUPTS * 4
         },
         vector_table,
         "vector table not at expected VMA behind the stack"
@@ -475,7 +479,7 @@ fn baseline_teensy4(binary: &ImxrtBinary, dcd_at_runtime: u32, stack_size: u64, 
     assert_eq!(
         Section {
             address: stack.address + stack.size,
-            size: 16 * 4 + 240 * 4
+            size: 16 * 4 + IMXRT1060_INTERRUPTS * 4
         },
         vector_table,
         "vector table not at expected VMA behind the stack"
@@ -693,7 +697,7 @@ fn imxrt1170evk_cm7() {
     assert_eq!(
         Section {
             address: stack.address + stack.size,
-            size: 16 * 4 + 240 * 4
+            size: 16 * 4 + IMXRT1170_INTERRUPTS * 4
         },
         vector_table,
         "vector table not at expected VMA behind the stack"
@@ -813,7 +817,7 @@ fn imxrt1170evk_cm7_nonboot() {
     assert_eq!(
         Section {
             address: stack.address + stack.size,
-            size: 16 * 4 + 240 * 4
+            size: 16 * 4 + IMXRT1170_INTERRUPTS * 4
         },
         vector_table,
         "vector table not at expected VMA behind the stack"

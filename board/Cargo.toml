@@ -9,12 +9,15 @@ version = "1.0"
 
 [dependencies.imxrt-ral]
 version = "0.5"
+features = ["rt"]
 
 [dependencies.imxrt-rt]
 path = ".."
+features = ["device"]
 
 [build-dependencies.imxrt-rt]
 path = ".."
+features = ["device"]
 
 [target.'cfg(all(target_arch = "arm", target_os = "none"))'.dependencies]
 teensy4-fcb = { version = "0.3", optional = true }
