@@ -778,11 +778,8 @@ fn write_flexram_memories(
     let ocram_count = layout_count_of(FlexRamKind::Ocram, flexram_layout);
 
     if itcm_count > 0 {
-        let (itcm_start, itcm_size) = family.itcm_start_size(itcm_count);
-        writeln!(
-            output,
-            "ITCM (RWX) : ORIGIN = {itcm_start:#X}, LENGTH = {itcm_size:#X}"
-        )?;
+        let itcm = family.itcm_start_size(itcm_count);
+        writeln!(output, "ITCM {itcm}")?;
     }
     if dtcm_count > 0 {
         writeln!(
@@ -792,14 +789,9 @@ fn write_flexram_memories(
         )?;
     }
 
-    let ocram_size = ocram_count * family.flexram_bank_size() + family.dedicated_ocram_size();
-    if ocram_size > 0 {
-        writeln!(
-            output,
-            "OCRAM (RWX) : ORIGIN = {:#X}, LENGTH = {:#X}",
-            family.ocram_start(),
-            ocram_size,
-        )?;
+    let ocram = family.ocram_start_size(ocram_count);
+    if ocram.size > 0 {
+        writeln!(output, "OCRAM {ocram}",)?;
     }
     Ok(())
 }
@@ -942,11 +934,12 @@ impl Family {
         }
     }
 
-    /// Where does the OCRAM region begin?
+    /// Computes the OCRAM start address and size, in that order.
     ///
-    /// This includes dedicated any OCRAM regions, if any exist for the chip.
-    fn ocram_start(self) -> u32 {
-        match self {
+    /// This tries to select the largest, contiguous OCRAM region. This
+    /// may consider FlexRAM, dedicated OCRAM regions, and unused ECC regions.
+    const fn ocram_start_size(self, ocram_banks: usize) -> MemoryRegion {
+        let ocram_start: usize = match self {
             // 256 KiB offset from the OCRAM M4 backdoor.
             Family::Imxrt1170 => 0x2024_0000,
             // Using the alias regions, assuming ECC is disabled.
@@ -964,14 +957,9 @@ impl Family {
             | Family::Imxrt1050
             | Family::Imxrt1060
             | Family::Imxrt1064 => 0x2020_0000,
-        }
-    }
+        };
 
-    /// What's the size, in bytes, of the dedicated OCRAM section?
-    ///
-    /// This isn't supported by all chips.
-    const fn dedicated_ocram_size(self) -> usize {
-        match self {
+        let dedicated_ocram_size: usize = match self {
             Family::Imxrt1010
             | Family::Imxrt1015
             | Family::Imxrt1020
@@ -987,6 +975,16 @@ impl Family {
             Family::Imxrt1170 => (2 * 512 + 2 * 64 + 128) * 1024,
             // OCRAM1 (512k), OCRAM2 (256k), 16k reserved as a ROM patch area
             Family::Imxrt1180 => (512 + 256 - 16) * 1024,
+        };
+
+        let flexram_size = ocram_banks * self.flexram_bank_size();
+
+        MemoryRegion {
+            start: ocram_start,
+            size: flexram_size + dedicated_ocram_size,
+            read: true,
+            write: true,
+            exec: true,
         }
     }
 
@@ -1093,7 +1091,7 @@ impl Family {
     }
 
     /// Returns the start and size of the ITCM memory region.
-    const fn itcm_start_size(self, itcm_banks: usize) -> (usize, usize) {
+    const fn itcm_start_size(self, itcm_banks: usize) -> MemoryRegion {
         let mut itcm_size = itcm_banks * self.flexram_bank_size();
         let itcm_start = match self {
             Family::Imxrt1010
@@ -1113,7 +1111,14 @@ impl Family {
             }
             Family::Imxrt1180 => 0x10000000 - itcm_size,
         };
-        (itcm_start, itcm_size)
+
+        MemoryRegion {
+            start: itcm_start,
+            size: itcm_size,
+            read: true,
+            write: true,
+            exec: true,
+        }
     }
 }
 
@@ -1241,6 +1246,44 @@ fn flexram_config(family: Family, layout: &[FlexRamKind]) -> u32 {
             shift += 2;
         }
         mask
+    }
+}
+
+/// A memory region.
+///
+/// The region has no name. Nevertheless, you can use its `Display`
+/// implementation to write it into a linker script.
+#[derive(Clone, Copy, PartialEq, Eq)]
+struct MemoryRegion {
+    /// Starting address.
+    start: usize,
+    /// Size, in bytes.
+    size: usize,
+    /// Has read access.
+    read: bool,
+    /// Has write access.
+    write: bool,
+    /// Is executable.
+    exec: bool,
+}
+
+impl std::fmt::Display for MemoryRegion {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        use std::fmt::Write;
+
+        f.write_char('(')?;
+        f.write_char(if self.read { 'R' } else { ' ' })?;
+        f.write_char(if self.write { 'W' } else { ' ' })?;
+        f.write_char(if self.exec { 'X' } else { ' ' })?;
+        f.write_char(')')?;
+
+        write!(
+            f,
+            " : ORIGIN = {:#X}, LENGTH = {:#X}",
+            self.start, self.size
+        )?;
+
+        Ok(())
     }
 }
 
@@ -1425,10 +1468,10 @@ mod tests {
         // at address 0.
         for family in MOST_FAMILIES {
             for itcm_banks in 0..=family.flexram_bank_count() {
-                let (start, size) = family.itcm_start_size(itcm_banks);
-                assert_eq!(start, 32);
+                let itcm = family.itcm_start_size(itcm_banks);
+                assert_eq!(itcm.start, 32);
                 assert_eq!(
-                    size,
+                    itcm.size,
                     (family.flexram_bank_size() * itcm_banks).saturating_sub(32)
                 );
             }
@@ -1438,9 +1481,9 @@ mod tests {
         // are properly configured.
         let family = Family::Imxrt1180;
         for itcm_banks in 0..=family.flexram_bank_count() {
-            let (start, size) = family.itcm_start_size(itcm_banks);
-            assert_ne!(start, 0);
-            assert_eq!(size, family.flexram_bank_size() * itcm_banks);
+            let itcm = family.itcm_start_size(itcm_banks);
+            assert_ne!(itcm.start, 0);
+            assert_eq!(itcm.size, family.flexram_bank_size() * itcm_banks);
         }
     }
 
@@ -1483,60 +1526,25 @@ mod tests {
         ];
 
         for (family, ocram_start, ocram_size_kib) in cases {
-            let ocram_size = ocram_size_kib * 1024;
-            let mut vec = Vec::new();
-            RuntimeBuilder::from_ram(family)
-                .write_linker_script(&mut vec)
-                .unwrap();
-
-            // This is hacky. But, until we have some kind of
-            // intermediate representation, it'll work for catching
-            // regressions.
-            let expected =
-                format!("OCRAM (RWX) : ORIGIN = {ocram_start:#X}, LENGTH = {ocram_size:#X}");
-
-            let linker_script = String::from_utf8(vec).unwrap();
-            assert!(linker_script.contains(&expected), "{family:?}");
-
-            // Take away an ITCM bank and give it to OCRAM.
-            // Show a bigger size.
             let default_banks = family.default_flexram_banks();
-            let mut vec = Vec::new();
-            RuntimeBuilder::from_ram(family)
-                .flexram_banks(FlexRamBanks {
-                    ocram: default_banks.ocram + 1,
-                    itcm: default_banks.itcm - 1,
-                    dtcm: default_banks.dtcm,
-                })
-                .write_linker_script(&mut vec)
-                .unwrap();
 
+            let ocram_size = ocram_size_kib * 1024;
+            let ocram = family.ocram_start_size(default_banks.ocram);
+            assert_eq!(ocram.start, ocram_start);
+            assert_eq!(ocram.size, ocram_size);
+
+            // Add an OCRAM bank.
             let ocram_size = ocram_size_kib * 1024 + family.flexram_bank_size();
-
-            let expected =
-                format!("OCRAM (RWX) : ORIGIN = {ocram_start:#X}, LENGTH = {ocram_size:#X}");
-
-            let linker_script = String::from_utf8(vec).unwrap();
-            assert!(linker_script.contains(&expected), "{family:?}");
+            let ocram = family.ocram_start_size(default_banks.ocram + 1);
+            assert_eq!(ocram.start, ocram_start);
+            assert_eq!(ocram.size, ocram_size);
 
             // Take away an OCRAM bank. Show a smaller size.
             if default_banks.ocram > 0 {
-                let mut vec = Vec::new();
-                RuntimeBuilder::from_ram(family)
-                    .flexram_banks(FlexRamBanks {
-                        ocram: default_banks.ocram - 1,
-                        ..default_banks
-                    })
-                    .write_linker_script(&mut vec)
-                    .unwrap();
-
                 let ocram_size = ocram_size_kib * 1024 - family.flexram_bank_size();
-
-                let expected =
-                    format!("OCRAM (RWX) : ORIGIN = {ocram_start:#X}, LENGTH = {ocram_size:#X}");
-
-                let linker_script = String::from_utf8(vec).unwrap();
-                assert!(linker_script.contains(&expected), "{family:?}");
+                let ocram = family.ocram_start_size(default_banks.ocram - 1);
+                assert_eq!(ocram.start, ocram_start);
+                assert_eq!(ocram.size, ocram_size);
             }
         }
     }
@@ -1548,19 +1556,9 @@ mod tests {
 
         for (family, ocram_start, ocram_size_kib) in cases {
             let ocram_size = ocram_size_kib * 1024;
-            let mut vec = Vec::new();
-            RuntimeBuilder::from_ram(family)
-                .write_linker_script(&mut vec)
-                .unwrap();
-
-            // This is hacky. But, until we have some kind of
-            // intermediate representation, it'll work for catching
-            // regressions.
-            let expected =
-                format!("OCRAM (RWX) : ORIGIN = {ocram_start:#X}, LENGTH = {ocram_size:#X}");
-
-            let linker_script = String::from_utf8(vec).unwrap();
-            assert!(linker_script.contains(&expected), "{family:?}");
+            let ocram = family.ocram_start_size(0);
+            assert_eq!(ocram.start, ocram_start);
+            assert_eq!(ocram.size, ocram_size);
         }
     }
 }
