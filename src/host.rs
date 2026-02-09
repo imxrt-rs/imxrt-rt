@@ -199,6 +199,55 @@ impl EnvOverride {
     }
 }
 
+/// The MECC64 controller configuration.
+///
+/// MECC64 manages ECC for dedicated OCRAM.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Mecc64 {
+    /// The OCRAM ECC engine is disabled.
+    #[default]
+    Disable,
+    /// The OCRAM ECC engine is enabled.
+    Enable,
+}
+
+impl Mecc64 {
+    const fn is_enable(self) -> bool {
+        match self {
+            Self::Enable => true,
+            Self::Disable => false,
+        }
+    }
+    const fn is_disable(self) -> bool {
+        !self.is_enable()
+    }
+}
+
+/// The FlexRAM ECC controller configuration.
+///
+/// FlexRAM manages ECC for TCM and FlexRAM-allocated
+/// OCRAM.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum FlexRamEcc {
+    /// The FlexRAM ECC engine is disabled.
+    #[default]
+    Disable,
+    /// The FlexRAM ECC engine is enabled.
+    Enable,
+}
+
+impl FlexRamEcc {
+    const fn is_enable(self) -> bool {
+        match self {
+            Self::Enable => true,
+            Self::Disable => false,
+        }
+    }
+    const fn is_disable(self) -> bool {
+        !self.is_enable()
+    }
+}
+
 /// Builder for the i.MX RT runtime.
 ///
 /// `RuntimeBuilder` let you assign sections to memory regions. It also lets
@@ -227,7 +276,7 @@ impl EnvOverride {
 /// stack sizes, heap sizes, and additional configurations.
 ///
 /// ```
-/// use imxrt_rt::{Family, RuntimeBuilder, Memory};
+/// use imxrt_rt::{Family, RuntimeBuilder, Memory, Mecc64, FlexRamEcc};
 ///
 /// const FLASH_SIZE: usize = 16 * 1024;
 /// let family = Family::Imxrt1060;
@@ -247,6 +296,8 @@ impl EnvOverride {
 /// b.heap_size(0);          // ...but no space given to the heap.
 /// b.linker_script_name("imxrt-link.x");
 /// b.device_script_name("device.x");
+/// b.flexram_ecc(FlexRamEcc::Disable);
+/// b.mecc64(Mecc64::Disable);
 ///
 /// assert_eq!(b, RuntimeBuilder::from_flexspi(family, FLASH_SIZE));
 /// ```
@@ -327,6 +378,29 @@ impl EnvOverride {
 /// In the above example, `YOUR_STACK_SIZE` invalidates the call with `INVALIDATED`.
 /// Therefore, `YOUR_STACK_SIZE` controls the stack size, if set. Otherwise, the stack
 /// size is the default stack size.
+///
+/// # ECC RAM
+///
+/// Only some MCU families support ECC protection on RAM. There's two controllers supported
+/// by the runtime:
+///
+/// - MECC64, protecting dedicated OCRAM.
+/// - FlexRAM ECC, protecting TCM and FlexRAM-allocated OCRAM.
+///
+/// Use [`flexram_ecc`](Self::flexram_ecc) and [`mecc64`](Self::mecc64) to configure each
+/// controller. If your MCU family doesn't support the given controller, then the runtime
+/// builder will panic on your host.
+///
+/// When you enable MECC64, it's enabled on both the OCRAM1 and OCRAM2 regions.
+/// Software does not provide an API to separate the configuration per OCRAM region.
+///
+/// When you enable FlexRAM ECC, the protection spans depend on your fuse configuration.
+///
+/// Typically, the runtime builder will treat dedicated OCRAM and FlexRAM-allocated OCRAM
+/// as a single, contiguous RAM region. However, if any ECC controller requires memory banks
+/// in between those two allocations, then the runtime allocates the OCRAM region into the
+/// *dedicated* OCRAM banks. To minimize the impact of this partition, minimize your FlexRAM
+/// OCRAM banks.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RuntimeBuilder {
     family: Family,
@@ -344,6 +418,8 @@ pub struct RuntimeBuilder {
     flash_opts: Option<FlashOpts>,
     linker_script_name: String,
     device_script_name: String,
+    flexram_ecc: FlexRamEcc,
+    mecc64: Mecc64,
 }
 
 const DEFAULT_LINKER_SCRIPT_NAME: &str = "imxrt-link.x";
@@ -376,6 +452,8 @@ impl RuntimeBuilder {
             }),
             linker_script_name: DEFAULT_LINKER_SCRIPT_NAME.into(),
             device_script_name: DEFAULT_DEVICE_SCRIPT_NAME.into(),
+            flexram_ecc: FlexRamEcc::Disable,
+            mecc64: Mecc64::Disable,
         }
     }
 
@@ -414,6 +492,8 @@ impl RuntimeBuilder {
             }),
             linker_script_name: DEFAULT_LINKER_SCRIPT_NAME.into(),
             device_script_name: DEFAULT_DEVICE_SCRIPT_NAME.into(),
+            flexram_ecc: FlexRamEcc::Disable,
+            mecc64: Mecc64::Disable,
         }
     }
 
@@ -435,6 +515,8 @@ impl RuntimeBuilder {
             flash_opts: None,
             linker_script_name: DEFAULT_LINKER_SCRIPT_NAME.into(),
             device_script_name: DEFAULT_DEVICE_SCRIPT_NAME.into(),
+            flexram_ecc: FlexRamEcc::Disable,
+            mecc64: Mecc64::Disable,
         }
     }
 
@@ -577,6 +659,28 @@ impl RuntimeBuilder {
         self
     }
 
+    /// Enable or disable ECC for FlexRAM.
+    ///
+    /// The ECC can protect TCM regions, along with OCRAM banks allocated
+    /// through FlexRAM. See [ECC RAM](Self#ecc-ram) for more information.
+    ///
+    /// By default, this is disabled.
+    pub fn flexram_ecc(&mut self, enable: FlexRamEcc) -> &mut Self {
+        self.flexram_ecc = enable;
+        self
+    }
+
+    /// Enable or disable MECC64 for external OCRAM.
+    ///
+    /// This adds protection for the dedicate OCRAM banks.
+    /// See [ECC RAM](Self#ecc-ram) for more information.
+    ///
+    /// By default, this is disabled.
+    pub fn mecc64(&mut self, enable: Mecc64) -> &mut Self {
+        self.mecc64 = enable;
+        self
+    }
+
     /// Commit the runtime configuration.
     ///
     /// `build()` ensures that the generated linker script is available to the
@@ -636,7 +740,14 @@ impl RuntimeBuilder {
         self.check_configurations()?;
 
         if let Some(flash_opts) = &self.flash_opts {
-            write_flash_memory_map(writer, self.family, flash_opts, &self.flexram_layout)?;
+            write_flash_memory_map(
+                writer,
+                self.family,
+                flash_opts,
+                &self.flexram_layout,
+                self.flexram_ecc,
+                self.mecc64,
+            )?;
 
             if flash_opts.boot_header {
                 let boot_header_x = match self.family {
@@ -654,7 +765,13 @@ impl RuntimeBuilder {
                 writer.write_all(boot_header_x)?;
             }
         } else {
-            write_ram_memory_map(writer, self.family, &self.flexram_layout)?;
+            write_ram_memory_map(
+                writer,
+                self.family,
+                &self.flexram_layout,
+                self.flexram_ecc,
+                self.mecc64,
+            )?;
         }
 
         if cfg!(feature = "device") {
@@ -760,6 +877,16 @@ impl RuntimeBuilder {
         prevent_flash!(stack)?;
         prevent_flash!(heap)?;
 
+        if self.flexram_ecc.is_enable() && !self.family.supports_flexram_ecc() {
+            return Err(format!(
+                "{:?} doesn't support FlexRAM-managed ECC",
+                self.family
+            ));
+        }
+        if self.mecc64.is_enable() && !self.family.supports_mecc64() {
+            return Err(format!("{:?} doesn't support MECC64", self.family));
+        }
+
         Ok(())
     }
 }
@@ -772,6 +899,8 @@ fn write_flexram_memories(
     output: &mut dyn Write,
     family: Family,
     flexram_layout: &[FlexRamKind],
+    flexram_ecc: FlexRamEcc,
+    mecc64: Mecc64,
 ) -> io::Result<()> {
     let itcm_count = layout_count_of(FlexRamKind::Itcm, flexram_layout);
     let dtcm_count = layout_count_of(FlexRamKind::Dtcm, flexram_layout);
@@ -789,7 +918,7 @@ fn write_flexram_memories(
         )?;
     }
 
-    let ocram = family.ocram_start_size(ocram_count);
+    let ocram = family.ocram_start_size(ocram_count, flexram_ecc, mecc64);
     if ocram.size > 0 {
         writeln!(output, "OCRAM {ocram}",)?;
     }
@@ -802,6 +931,8 @@ fn write_flash_memory_map(
     family: Family,
     flash_opts: &FlashOpts,
     flexram_layout: &[FlexRamKind],
+    flexram_ecc: FlexRamEcc,
+    mecc64: Mecc64,
 ) -> io::Result<()> {
     writeln!(
         output,
@@ -815,7 +946,7 @@ fn write_flash_memory_map(
         flash_opts.flash_origin(family).expect("Already checked"),
         flash_opts.size
     )?;
-    write_flexram_memories(output, family, flexram_layout)?;
+    write_flexram_memories(output, family, flexram_layout, flexram_ecc, mecc64)?;
     writeln!(output, "}}")?;
     writeln!(output, "__fcb_offset = {:#X};", family.fcb_offset())?;
     Ok(())
@@ -829,13 +960,15 @@ fn write_ram_memory_map(
     output: &mut dyn Write,
     family: Family,
     flexram_layout: &[FlexRamKind],
+    flexram_ecc: FlexRamEcc,
+    mecc64: Mecc64,
 ) -> io::Result<()> {
     writeln!(
         output,
         "/* Memory map for '{family:?}' that executes from RAM. */",
     )?;
     writeln!(output, "MEMORY {{")?;
-    write_flexram_memories(output, family, flexram_layout)?;
+    write_flexram_memories(output, family, flexram_layout, flexram_ecc, mecc64)?;
     writeln!(output, "}}")?;
     Ok(())
 }
@@ -934,18 +1067,80 @@ impl Family {
         }
     }
 
+    /// Indicates a family's support for FlexRAM ECC.
+    const fn supports_flexram_ecc(self) -> bool {
+        match self {
+            Family::Imxrt1160 | Family::Imxrt1170 => true,
+            Family::Imxrt1010
+            | Family::Imxrt1015
+            | Family::Imxrt1020
+            | Family::Imxrt1040
+            | Family::Imxrt1050
+            | Family::Imxrt1060
+            | Family::Imxrt1064
+            | Family::Imxrt1180 => false,
+        }
+    }
+
+    /// Indicates a family's support for MECC64.
+    const fn supports_mecc64(self) -> bool {
+        match self {
+            Family::Imxrt1160 | Family::Imxrt1170 => true,
+            Family::Imxrt1010
+            | Family::Imxrt1015
+            | Family::Imxrt1020
+            | Family::Imxrt1040
+            | Family::Imxrt1050
+            | Family::Imxrt1060
+            | Family::Imxrt1064 => false,
+            // The 1180 could support it, but I'm not adding
+            // it right now. The MCU is a little different,
+            // and I haven't done my comparison to see if this
+            // is one of those things that greatly varies.
+            Family::Imxrt1180 => false,
+        }
+    }
+
     /// Computes the OCRAM start address and size, in that order.
     ///
     /// This tries to select the largest, contiguous OCRAM region. This
     /// may consider FlexRAM, dedicated OCRAM regions, and unused ECC regions.
-    const fn ocram_start_size(self, ocram_banks: usize) -> MemoryRegion {
+    const fn ocram_start_size(
+        self,
+        ocram_banks: usize,
+        flexram_ecc: FlexRamEcc,
+        mecc64: Mecc64,
+    ) -> MemoryRegion {
+        // Expected to be checked elsewhere with a better UX.
+        assert!(flexram_ecc.is_disable() || self.supports_flexram_ecc());
+        assert!(mecc64.is_disable() || self.supports_mecc64());
+
         let ocram_start: usize = match self {
-            // 256 KiB offset from the OCRAM M4 backdoor.
+            // OCRAM1, or 256 KiB offset from the OCRAM M4 backdoor.
+            //
+            // This starting address works no matter the ECC combinations.
+            // If ECC is enabled, we'll truncate the size.
             Family::Imxrt1170 => 0x2024_0000,
-            // Using the alias regions, assuming ECC is disabled.
-            // The two alias regions, plus the ECC region, provide
-            // the *contiguous* 256 KiB of dedicated OCRAM.
-            Family::Imxrt1160 => 0x2034_0000,
+            Family::Imxrt1160 => {
+                match (flexram_ecc, mecc64) {
+                    // Using the alias regions, assuming ECC is disabled.
+                    // The two alias regions, plus the ECC region, provide
+                    // the *contiguous* 256 KiB of dedicated OCRAM.
+                    //
+                    // If the FlexRAM ECC is enabled, we can still use this
+                    // region for the dedicated OCRAM allocation. We just can't
+                    // treat all OCRAM as contiguous.
+                    (FlexRamEcc::Disable | FlexRamEcc::Enable, Mecc64::Disable) => 0x2034_0000,
+                    // The MECC64 ECC is right in the middle of the FlexRAM
+                    // region. Instead, use the OCRAM1 alias region beneath
+                    // the "real" OCRAM2.
+                    //
+                    // Same as above: if FlexRAM ECC is enabled, we're not contiguous.
+                    (FlexRamEcc::Disable | FlexRamEcc::Enable, Mecc64::Enable) => {
+                        0x202C_0000 - 64 * 1024
+                    }
+                }
+            }
             // Skip the first 16 KiB, "cannot be safely used by application images".
             Family::Imxrt1180 => 0x2048_4000,
             // Either starts the FlexRAM OCRAM banks, or the
@@ -966,18 +1161,63 @@ impl Family {
             | Family::Imxrt1040
             | Family::Imxrt1050 => 0,
             Family::Imxrt1060 | Family::Imxrt1064 => 512 * 1024,
-            // - Two dedicated OCRAMs
-            // - One FlexRAM OCRAM EC region that's OCRAM when ECC is disabled.
-            Family::Imxrt1160 => (2 * 64 + 128) * 1024,
+            Family::Imxrt1160 => {
+                // OCRAM1 and OCRAM2 are always 64KiB.
+                let dedicated_ocram = 2 * 64 * 1024;
+                // Possibly available, but only if
+                // we're not using any ECC.
+                let opt_ocram_m7_ecc =
+                    128 * 1024 * (flexram_ecc.is_disable() & mecc64.is_disable()) as usize;
+                dedicated_ocram + opt_ocram_m7_ecc
+            }
             // - Two dedicated OCRAMs
             // - Two dedicated OCRAM ECC regions that aren't used for ECC
             // - One FlexRAM OCRAM ECC region that's strictly OCRAM, without ECC
-            Family::Imxrt1170 => (2 * 512 + 2 * 64 + 128) * 1024,
+            Family::Imxrt1170 => {
+                // Two dedicated OCRAMs.
+                let dedicated_ocram = 2 * 512 * 1024;
+                // Two dedicated OCRAM ECC regions that may be available.
+                let opt_mecc64 = 2 * 64 * 1024 * (mecc64.is_disable()) as usize;
+                // One FlexRAM ECC region. We can only reach this if we can reach
+                // through the MECC64 region.
+                let opt_flexram_ecc =
+                    128 * 1024 * (flexram_ecc.is_disable() & mecc64.is_disable()) as usize;
+                dedicated_ocram + opt_mecc64 + opt_flexram_ecc
+            }
             // OCRAM1 (512k), OCRAM2 (256k), 16k reserved as a ROM patch area
             Family::Imxrt1180 => (512 + 256 - 16) * 1024,
         };
 
         let flexram_size = ocram_banks * self.flexram_bank_size();
+        let flexram_size = match self {
+            Family::Imxrt1010
+            | Family::Imxrt1015
+            | Family::Imxrt1020
+            | Family::Imxrt1040
+            | Family::Imxrt1050
+            | Family::Imxrt1060
+            | Family::Imxrt1064
+            | Family::Imxrt1180 => flexram_size,
+            Family::Imxrt1160 => match (flexram_ecc, mecc64) {
+                // We can bridge dedicated OCRAM to FlexRAM OCRAM only
+                // when none of the ECC regions are used for ECC RAM.
+                (FlexRamEcc::Disable, Mecc64::Disable) => flexram_size,
+                // Once either / both are enabled, the ECC regions partition
+                // the FlexRAM from the dedicated OCRAM. With this in mind,
+                // assume nothing contributes from FlexRAM. Users can tune their
+                // FlexRAM banks to minimize this loss.
+                (FlexRamEcc::Disable, Mecc64::Enable)
+                | (FlexRamEcc::Enable, Mecc64::Disable)
+                | (FlexRamEcc::Enable, Mecc64::Enable) => 0,
+            },
+            Family::Imxrt1170 => match (flexram_ecc, mecc64) {
+                // See 1160 notes. Same apply here.
+                (FlexRamEcc::Disable, Mecc64::Disable) => flexram_size,
+                (FlexRamEcc::Disable, Mecc64::Enable)
+                | (FlexRamEcc::Enable, Mecc64::Disable)
+                | (FlexRamEcc::Enable, Mecc64::Enable) => 0,
+            },
+        };
 
         MemoryRegion {
             start: ocram_start,
@@ -1289,7 +1529,7 @@ impl std::fmt::Display for MemoryRegion {
 
 #[cfg(test)]
 mod tests {
-    use crate::Memory;
+    use crate::{FlexRamEcc, Mecc64, Memory};
 
     use super::{Family, FlexRamBanks, RuntimeBuilder};
     use std::{error, io};
@@ -1529,20 +1769,29 @@ mod tests {
             let default_banks = family.default_flexram_banks();
 
             let ocram_size = ocram_size_kib * 1024;
-            let ocram = family.ocram_start_size(default_banks.ocram);
+            let ocram =
+                family.ocram_start_size(default_banks.ocram, FlexRamEcc::Disable, Mecc64::Disable);
             assert_eq!(ocram.start, ocram_start);
             assert_eq!(ocram.size, ocram_size);
 
             // Add an OCRAM bank.
             let ocram_size = ocram_size_kib * 1024 + family.flexram_bank_size();
-            let ocram = family.ocram_start_size(default_banks.ocram + 1);
+            let ocram = family.ocram_start_size(
+                default_banks.ocram + 1,
+                FlexRamEcc::Disable,
+                Mecc64::Disable,
+            );
             assert_eq!(ocram.start, ocram_start);
             assert_eq!(ocram.size, ocram_size);
 
             // Take away an OCRAM bank. Show a smaller size.
             if default_banks.ocram > 0 {
                 let ocram_size = ocram_size_kib * 1024 - family.flexram_bank_size();
-                let ocram = family.ocram_start_size(default_banks.ocram - 1);
+                let ocram = family.ocram_start_size(
+                    default_banks.ocram - 1,
+                    FlexRamEcc::Disable,
+                    Mecc64::Disable,
+                );
                 assert_eq!(ocram.start, ocram_start);
                 assert_eq!(ocram.size, ocram_size);
             }
@@ -1556,9 +1805,102 @@ mod tests {
 
         for (family, ocram_start, ocram_size_kib) in cases {
             let ocram_size = ocram_size_kib * 1024;
-            let ocram = family.ocram_start_size(0);
+            let ocram = family.ocram_start_size(0, FlexRamEcc::Disable, Mecc64::Disable);
             assert_eq!(ocram.start, ocram_start);
             assert_eq!(ocram.size, ocram_size);
+        }
+    }
+
+    #[test]
+    fn ecc_ram_1160() {
+        let family = Family::Imxrt1160;
+
+        let cases = [
+            // Disable, Disable test covered in general OCRAM start/size test.
+            (FlexRamEcc::Disable, Mecc64::Enable, 0x202B_0000, 128),
+            (FlexRamEcc::Enable, Mecc64::Disable, 0x2034_0000, 128),
+            (FlexRamEcc::Enable, Mecc64::Enable, 0x202B_0000, 128),
+        ];
+
+        for (flexram_ecc, mecc64, ocram_start, ocram_size_kib) in cases {
+            let default_banks = family.default_flexram_banks();
+
+            let ocram_size = ocram_size_kib * 1024;
+            let ocram = family.ocram_start_size(default_banks.ocram, flexram_ecc, mecc64);
+            assert_eq!(ocram.start, ocram_start);
+            assert_eq!(ocram.size, ocram_size);
+
+            // Even if we add an OCRAM bank, we can't connect the memory
+            // regions. The size is the dedicated OCRAM region.
+            let ocram = family.ocram_start_size(default_banks.ocram + 1, flexram_ecc, mecc64);
+            assert_eq!(ocram.start, ocram_start);
+            assert_eq!(ocram.size, ocram_size);
+        }
+    }
+
+    #[test]
+    fn ecc_ram_1170() {
+        let family = Family::Imxrt1170;
+
+        let cases = [
+            // Disable, Disable test covered in general OCRAM start/size test.
+            (FlexRamEcc::Disable, Mecc64::Enable, 0x2024_0000, 2 * 512),
+            (
+                FlexRamEcc::Enable,
+                Mecc64::Disable,
+                0x2024_0000,
+                2 * 512 + 64 * 2,
+            ),
+            (FlexRamEcc::Enable, Mecc64::Enable, 0x2024_0000, 2 * 512),
+        ];
+
+        for (flexram_ecc, mecc64, ocram_start, ocram_size_kib) in cases {
+            let default_banks = family.default_flexram_banks();
+
+            let ocram_size = ocram_size_kib * 1024;
+            let ocram = family.ocram_start_size(default_banks.ocram, flexram_ecc, mecc64);
+            assert_eq!(ocram.start, ocram_start);
+            assert_eq!(ocram.size, ocram_size);
+
+            // Even if we add an OCRAM bank, we can't connect the memory
+            // regions. The size is the dedicated OCRAM region.
+            let ocram = family.ocram_start_size(default_banks.ocram + 1, flexram_ecc, mecc64);
+            assert_eq!(ocram.start, ocram_start);
+            assert_eq!(ocram.size, ocram_size);
+        }
+    }
+
+    #[test]
+    fn ecc_ram_unsuppored() {
+        let families = [
+            Family::Imxrt1010,
+            Family::Imxrt1015,
+            Family::Imxrt1020,
+            Family::Imxrt1040,
+            Family::Imxrt1050,
+            Family::Imxrt1060,
+            Family::Imxrt1064,
+            Family::Imxrt1180,
+        ];
+
+        for family in families {
+            RuntimeBuilder::from_ram(family)
+                .write_linker_script(&mut io::sink())
+                .unwrap();
+
+            assert!(
+                RuntimeBuilder::from_ram(family)
+                    .flexram_ecc(FlexRamEcc::Enable)
+                    .write_linker_script(&mut io::sink())
+                    .is_err()
+            );
+
+            assert!(
+                RuntimeBuilder::from_ram(family)
+                    .mecc64(Mecc64::Enable)
+                    .write_linker_script(&mut io::sink())
+                    .is_err()
+            );
         }
     }
 }

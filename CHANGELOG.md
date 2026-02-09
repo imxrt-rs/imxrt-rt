@@ -32,6 +32,15 @@ true if you only specify the count, or if you make no choice. However, if you
 specify the layout, the builder guarantees that the FlexRAM banks will match
 that layout.
 
+### ECC RAM for 11xx MCUs
+
+You may optionally enable ECC RAM on 11xx MCUs. The implementation supports
+
+- FlexRAM ECC for TCM and FlexRAM-managed OCRAM.
+- MECC64 for dedicated OCRAM.
+
+See the ECC RAM documentation on `RuntimeBuilder` for more information.
+
 ## [0.1.7] 2025-06-14
 
 Introduce `RuntimeBuilder::in_flash` for creating images that can be launched
