@@ -1467,4 +1467,100 @@ mod tests {
             );
         }
     }
+
+    #[test]
+    fn ocram_start_size() {
+        let cases = [
+            (Family::Imxrt1010, 0x2020_0000, 64),
+            (Family::Imxrt1015, 0x2020_0000, 64),
+            (Family::Imxrt1020, 0x2020_0000, 128),
+            (Family::Imxrt1040, 0x2020_0000, 256),
+            (Family::Imxrt1050, 0x2020_0000, 256),
+            (Family::Imxrt1060, 0x2020_0000, 256 + 512),
+            (Family::Imxrt1160, 0x2034_0000, 64 * 2 + 128),
+            (Family::Imxrt1170, 0x2024_0000, 64 * 2 + 512 * 2 + 128),
+            // 1180 tested separately.
+        ];
+
+        for (family, ocram_start, ocram_size_kib) in cases {
+            let ocram_size = ocram_size_kib * 1024;
+            let mut vec = Vec::new();
+            RuntimeBuilder::from_ram(family)
+                .write_linker_script(&mut vec)
+                .unwrap();
+
+            // This is hacky. But, until we have some kind of
+            // intermediate representation, it'll work for catching
+            // regressions.
+            let expected =
+                format!("OCRAM (RWX) : ORIGIN = {ocram_start:#X}, LENGTH = {ocram_size:#X}");
+
+            let linker_script = String::from_utf8(vec).unwrap();
+            assert!(linker_script.contains(&expected), "{family:?}");
+
+            // Take away an ITCM bank and give it to OCRAM.
+            // Show a bigger size.
+            let default_banks = family.default_flexram_banks();
+            let mut vec = Vec::new();
+            RuntimeBuilder::from_ram(family)
+                .flexram_banks(FlexRamBanks {
+                    ocram: default_banks.ocram + 1,
+                    itcm: default_banks.itcm - 1,
+                    dtcm: default_banks.dtcm,
+                })
+                .write_linker_script(&mut vec)
+                .unwrap();
+
+            let ocram_size = ocram_size_kib * 1024 + family.flexram_bank_size();
+
+            let expected =
+                format!("OCRAM (RWX) : ORIGIN = {ocram_start:#X}, LENGTH = {ocram_size:#X}");
+
+            let linker_script = String::from_utf8(vec).unwrap();
+            assert!(linker_script.contains(&expected), "{family:?}");
+
+            // Take away an OCRAM bank. Show a smaller size.
+            if default_banks.ocram > 0 {
+                let mut vec = Vec::new();
+                RuntimeBuilder::from_ram(family)
+                    .flexram_banks(FlexRamBanks {
+                        ocram: default_banks.ocram - 1,
+                        ..default_banks
+                    })
+                    .write_linker_script(&mut vec)
+                    .unwrap();
+
+                let ocram_size = ocram_size_kib * 1024 - family.flexram_bank_size();
+
+                let expected =
+                    format!("OCRAM (RWX) : ORIGIN = {ocram_start:#X}, LENGTH = {ocram_size:#X}");
+
+                let linker_script = String::from_utf8(vec).unwrap();
+                assert!(linker_script.contains(&expected), "{family:?}");
+            }
+        }
+    }
+
+    /// Can't resize OCRAM on this part.
+    #[test]
+    fn ocram_start_size_1180() {
+        let cases = [(Family::Imxrt1180, 0x2048_4000, 512 + 256 - 16)];
+
+        for (family, ocram_start, ocram_size_kib) in cases {
+            let ocram_size = ocram_size_kib * 1024;
+            let mut vec = Vec::new();
+            RuntimeBuilder::from_ram(family)
+                .write_linker_script(&mut vec)
+                .unwrap();
+
+            // This is hacky. But, until we have some kind of
+            // intermediate representation, it'll work for catching
+            // regressions.
+            let expected =
+                format!("OCRAM (RWX) : ORIGIN = {ocram_start:#X}, LENGTH = {ocram_size:#X}");
+
+            let linker_script = String::from_utf8(vec).unwrap();
+            assert!(linker_script.contains(&expected), "{family:?}");
+        }
+    }
 }
