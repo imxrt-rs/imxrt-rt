@@ -55,6 +55,22 @@ global_asm! {r#"
     999:
 .endm
 
+.macro zero_section64 beg, end
+    ldr r0, =\beg
+    ldr r1, =\end
+    movw r2, #0
+
+  888:
+    cmp r0, r1
+    bge 999f
+
+    strd r2, r2, [r0], #8
+    b 888b
+
+  999:
+
+.endm
+
 __pre_init:
     ldr r0, =__imxrt_rt_v0.2        @ Need to know which chip family we're initializing.
     ldr r1, =0x1180
@@ -85,6 +101,42 @@ __pre_init:
     ldr r1, [r0, #64]               @ r1 = *(IMXRT_IOMUXC_GPR + 16)
     orr r1, r1, #1<<2               @ r1 |= 1 << 2
     str r1, [r0, #64]               @ *(IMXRT_IOMUXC_GPR + 16) = r1
+
+    # If there's an ITCM ECC region, make sure
+    #
+    # - the CPU issues RMW operations for smaller accesses.
+    # - the CPU retries operations when signaled.
+    #
+    # If there's no ECC region, the host sets the ends
+    # to zero, and we skip the instructions.
+    movw r3, #0
+    ldr r0, =__eitcm
+    cmp r0, r3
+    itttt ne
+    ldrne r0, =0xE000EF90           @ ITCMCR
+    ldrne r1, [r0]                  @ r1 = *ITCMCR
+    orrne r1, r1, #3<<1             @ r1 |= 3 << 1, setting RMW and RETEN
+    strne r1, [r0]                  @ *ITCMCR = r1
+
+    # Same as above, but for DTCM.
+    ldr r0, =__edtcm
+    cmp r0, r3
+    itttt ne
+    ldrne r0, =0xE000EF94           @ DTCMCR
+    ldrne r1, [r0]                  @ r1 = *DTCMCR
+    orrne r1, r1, #3<<1             @ r1 |= 3 << 1, setting RMW and RETEN
+    strne r1, [r0]                  @ *DTCMCR = r1
+
+    dsb
+    isb
+
+    # Zero memory regions for any ECC support.
+    # If ECC isn't enabled, then the host generates
+    # values that short circuit the loops.
+    zero_section64 __sitcm  , __eitcm
+    zero_section64 __sdtcm  , __edtcm
+    zero_section64 __socram , __eocram
+
     b 1000f
 
     1180:

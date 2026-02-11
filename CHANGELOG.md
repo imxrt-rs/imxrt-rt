@@ -40,6 +40,7 @@ You may optionally enable ECC RAM on 11xx MCUs. The implementation supports
 - MECC64 for dedicated OCRAM.
 
 See the ECC RAM documentation on `RuntimeBuilder` for more information.
+When enabled, pre-init will preload ECC ciphers by writing zero to RAM regions.
 
 ## [0.1.7] 2025-06-14
 

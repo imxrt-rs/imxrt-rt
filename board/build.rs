@@ -61,6 +61,8 @@ fn main() {
                 .rodata(imxrt_rt::Memory::Dtcm)
                 .stack_size_env_override("BOARD_STACK")
                 .heap_size_env_override("BOARD_HEAP")
+                .flexram_ecc(imxrt_rt::FlexRamEcc::Enable)
+                .mecc64(imxrt_rt::Mecc64::Enable)
                 .build()
                 .unwrap(),
             "imxrt1010evk_ram" => {

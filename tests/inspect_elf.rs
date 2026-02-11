@@ -266,6 +266,12 @@ fn imxrt1010evk() {
         binary.fcb().unwrap()
     );
     assert_eq!(binary.flexram_config().unwrap(), 0b11_10_0101);
+    assert_eq!(binary.symbol_value("__sitcm").unwrap(), 0);
+    assert_eq!(binary.symbol_value("__eitcm").unwrap(), 0);
+    assert_eq!(binary.symbol_value("__sdtcm").unwrap(), 0);
+    assert_eq!(binary.symbol_value("__edtcm").unwrap(), 0);
+    assert_eq!(binary.symbol_value("__socram").unwrap(), 0);
+    assert_eq!(binary.symbol_value("__eocram").unwrap(), 0);
 
     let ivt = binary.ivt().unwrap();
     assert_eq!(ivt.magic_header, 0x402000D1);
@@ -379,6 +385,13 @@ fn imxrt1010evk_ram() {
     let elf = Elf::parse(&contents).expect("Could not parse ELF");
 
     let binary = ImxrtBinary::new(&elf, &contents);
+
+    assert_eq!(binary.symbol_value("__sitcm").unwrap(), 0);
+    assert_eq!(binary.symbol_value("__eitcm").unwrap(), 0);
+    assert_eq!(binary.symbol_value("__sdtcm").unwrap(), 0);
+    assert_eq!(binary.symbol_value("__edtcm").unwrap(), 0);
+    assert_eq!(binary.symbol_value("__socram").unwrap(), 0);
+    assert_eq!(binary.symbol_value("__eocram").unwrap(), 0);
 
     let stack = binary.section(".stack").unwrap();
     assert_eq!(
@@ -495,6 +508,12 @@ fn baseline_teensy4(
         binary.flexram_config().unwrap(),
         0b11111111_101010101010101010101010
     );
+    assert_eq!(binary.symbol_value("__sitcm").unwrap(), 0);
+    assert_eq!(binary.symbol_value("__eitcm").unwrap(), 0);
+    assert_eq!(binary.symbol_value("__sdtcm").unwrap(), 0);
+    assert_eq!(binary.symbol_value("__edtcm").unwrap(), 0);
+    assert_eq!(binary.symbol_value("__socram").unwrap(), 0);
+    assert_eq!(binary.symbol_value("__eocram").unwrap(), 0);
 
     let ivt = binary.ivt().unwrap();
     assert_eq!(ivt.magic_header, 0x402000D1);
@@ -735,6 +754,12 @@ fn imxrt1170evk_cm7() {
         binary.fcb().unwrap()
     );
     assert_eq!(binary.flexram_config().unwrap(), 0xFFAAFFAA);
+    assert_eq!(binary.symbol_value("__sitcm").unwrap(), 0);
+    assert_eq!(binary.symbol_value("__eitcm").unwrap(), 0x4_0000);
+    assert_eq!(binary.symbol_value("__sdtcm").unwrap(), 0x2000_0000);
+    assert_eq!(binary.symbol_value("__edtcm").unwrap(), 0x2004_0000);
+    assert_eq!(binary.symbol_value("__socram").unwrap(), 0x2024_0000);
+    assert_eq!(binary.symbol_value("__eocram").unwrap(), 0x2034_0000);
 
     let ivt = binary.ivt().unwrap();
     assert_eq!(ivt.magic_header, 0x402000D1);
@@ -855,6 +880,13 @@ fn imxrt1170evk_cm7_nonboot() {
     assert_eq!(binary.symbol_value("__dcd"), None);
     assert!(binary.fcb().is_err());
     assert_eq!(binary.flexram_config().unwrap(), 0xFFAAFFAA);
+
+    assert_eq!(binary.symbol_value("__sitcm").unwrap(), 0);
+    assert_eq!(binary.symbol_value("__eitcm").unwrap(), 0x4_0000);
+    assert_eq!(binary.symbol_value("__sdtcm").unwrap(), 0x2000_0000);
+    assert_eq!(binary.symbol_value("__edtcm").unwrap(), 0x2004_0000);
+    assert_eq!(binary.symbol_value("__socram").unwrap(), 0x2024_0000);
+    assert_eq!(binary.symbol_value("__eocram").unwrap(), 0x2034_0000);
 
     assert!(
         binary.ivt().is_err(),
