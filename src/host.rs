@@ -129,6 +129,7 @@ struct FlashOpts {
     size: usize,
     offset: u32,
     flexspi: FlexSpi,
+    boot_header: bool,
 }
 
 impl FlashOpts {
@@ -138,12 +139,6 @@ impl FlashOpts {
         self.flexspi
             .start_address(family)
             .map(|start_address| start_address + self.offset)
-    }
-
-    /// A bootable image (with the boot header) isn't offset
-    /// in flash.
-    fn is_boot_image(&self) -> bool {
-        self.offset == 0
     }
 }
 
@@ -376,6 +371,7 @@ impl RuntimeBuilder {
             flash_opts: Some(FlashOpts {
                 size: flash_size,
                 offset: 0,
+                boot_header: true,
                 flexspi: FlexSpi::family_default(family),
             }),
             linker_script_name: DEFAULT_LINKER_SCRIPT_NAME.into(),
@@ -413,6 +409,7 @@ impl RuntimeBuilder {
             flash_opts: Some(FlashOpts {
                 size: partition_size,
                 offset: partition_offset,
+                boot_header: false,
                 flexspi: FlexSpi::family_default(family),
             }),
             linker_script_name: DEFAULT_LINKER_SCRIPT_NAME.into(),
@@ -541,6 +538,21 @@ impl RuntimeBuilder {
         self
     }
 
+    /// Override the boot header configuration.
+    ///
+    /// By default, a runtime constructed using [`from_flexspi`](Self::from_flexspi) includes a boot header
+    /// for compatibility with NXP's boot ROM. However, a runtime constructed using [`in_flash`](Self::in_flash)
+    /// lacks this boot header; you're expected to bring your own bootloader.
+    ///
+    /// This call lets you change that default behavior. If this builder is not configuring a flash-loaded
+    /// runtime, this is silently ignored.
+    pub fn boot_header(&mut self, boot_header: bool) -> &mut Self {
+        if let Some(flash_opts) = &mut self.flash_opts {
+            flash_opts.boot_header = boot_header;
+        }
+        self
+    }
+
     /// Set the name of the linker script file.
     ///
     /// You can use this to customize the linker script name for your users.
@@ -626,7 +638,7 @@ impl RuntimeBuilder {
         if let Some(flash_opts) = &self.flash_opts {
             write_flash_memory_map(writer, self.family, flash_opts, &self.flexram_layout)?;
 
-            if flash_opts.is_boot_image() {
+            if flash_opts.boot_header {
                 let boot_header_x = match self.family {
                     Family::Imxrt1010
                     | Family::Imxrt1015

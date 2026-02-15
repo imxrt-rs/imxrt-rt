@@ -60,6 +60,32 @@ fn cargo_build_nonboot(board: &str) -> Result<PathBuf> {
     Ok(path)
 }
 
+fn cargo_build_secondary(board: &str) -> Result<PathBuf> {
+    let status = Command::new("cargo")
+        .arg("build")
+        .arg("--example=blink-rtic")
+        .arg(format!(
+            "--features=board/{board},board/rtic,board/secondary"
+        ))
+        .arg("--target=thumbv7em-none-eabihf")
+        .arg(format!("--target-dir=target/{board}-secondary"))
+        .arg("--quiet")
+        .spawn()?
+        .wait()?;
+
+    // TODO(summivox): `ExitStatus::exit_ok()` stabilization (can be chained after the `.wait()?)
+    if !status.success() {
+        return Err(
+            format!("Building board '{board}' failed: process returned {status:?}",).into(),
+        );
+    }
+
+    let path = PathBuf::from(format!(
+        "target/{board}-secondary/thumbv7em-none-eabihf/debug/examples/blink-rtic"
+    ));
+    Ok(path)
+}
+
 /// Build an example, returning a path to the ELF.
 fn cargo_build(board: &str) -> Result<PathBuf> {
     cargo_build_with_envs(board, &[])
@@ -781,7 +807,7 @@ fn imxrt1170evk_cm7() {
 #[test]
 #[ignore = "building an example can take time"]
 fn imxrt1170evk_cm7_nonboot() {
-    const IMAGE_OFFSET: u64 = 16 * 1024;
+    const IMAGE_OFFSET: u64 = 256 * 1024;
     let path = cargo_build_nonboot("imxrt1170evk-cm7").expect("Unable to build example");
     let contents = fs::read(path).expect("Could not read ELF file");
     let elf = Elf::parse(&contents).expect("Could not parse ELF");
@@ -904,5 +930,144 @@ fn imxrt1170evk_cm7_nonboot() {
         "0 byte heap in DTCM behind rodata table"
     );
     assert_eq!(binary.section_lma(".heap"), heap.address, "Heap is NOLOAD");
+    assert!(binary.symbol("Reset").is_some());
+}
+
+#[test]
+#[ignore = "building an example can take time"]
+fn imxrt1170evk_cm7_secondary() {
+    const IMAGE_OFFSET: u64 = 256 * 1024;
+    let path = cargo_build_secondary("imxrt1170evk-cm7").expect("Unable to build example");
+    let contents = fs::read(path).expect("Could not read ELF file");
+    let elf = Elf::parse(&contents).expect("Could not parse ELF");
+
+    let binary = ImxrtBinary::new(&elf, &contents);
+    assert_eq!(
+        binary.symbol_value("__dcd_start"),
+        binary.symbol_value("__dcd_end")
+    );
+    assert_eq!(binary.symbol_value("__dcd"), Some(0));
+    assert_eq!(
+        Fcb {
+            address: 0x3000_0400 + IMAGE_OFFSET,
+            size: 512
+        },
+        binary.fcb().unwrap()
+    );
+    assert_eq!(binary.flexram_config().unwrap(), 0xFFAAFFAA);
+
+    let ivt = binary.ivt().unwrap();
+    assert_eq!(ivt.magic_header, 0x402000D1);
+    assert_eq!(
+        ivt.interrupt_vector_table,
+        0x3000_2000 + IMAGE_OFFSET as u32
+    );
+    assert_eq!(ivt.device_configuration_data, 0);
+    assert_eq!(
+        ivt.boot_data as u64,
+        binary.symbol_value("__ivt").unwrap() + 32
+    );
+    assert!(
+        binary.section(".boot").is_ok(),
+        "Boot section missing in secondary non boot image"
+    );
+
+    let stack = binary.section(".stack").unwrap();
+    assert_eq!(
+        Section {
+            address: DTCM,
+            size: 8 * 1024
+        },
+        stack,
+        "stack not at ORIGIN(DTCM), or not 8 KiB large"
+    );
+    assert_eq!(binary.section_lma(".stack"), stack.address);
+
+    let vector_table = binary.section(".vector_table").unwrap();
+    assert_eq!(
+        Section {
+            address: stack.address + stack.size,
+            size: 16 * 4 + IMXRT1170_INTERRUPTS * 4
+        },
+        vector_table,
+        "vector table not at expected VMA behind the stack"
+    );
+    assert!(
+        vector_table.address.is_multiple_of(1024),
+        "vector table is not 1024-byte aligned"
+    );
+    assert_eq!(
+        binary.section_lma(".vector_table"),
+        0x3000_2000 + IMAGE_OFFSET
+    );
+
+    let xip = binary.section(".xip").unwrap();
+    let text = binary.section(".text").unwrap();
+    assert_eq!(text.address, ITCM, "text");
+    assert_eq!(
+        binary.section_lma(".text"),
+        aligned(0x3000_2000 + IMAGE_OFFSET + vector_table.size + xip.size, 4),
+        "text VMA expected behind vector table"
+    );
+
+    let rodata = binary.section(".rodata").unwrap();
+    assert_eq!(
+        rodata.address,
+        vector_table.address + vector_table.size,
+        "rodata moved to DTCM behind vector table"
+    );
+    assert!(
+        binary.section_lma(".rodata")
+            >= 0x3000_2000 + IMAGE_OFFSET + vector_table.size + aligned(text.size, 4),
+    );
+
+    let data = binary.section(".data").unwrap();
+    assert_eq!(data.address, 0x2024_0000, "data VMA in OCRAM");
+    assert_eq!(
+        data.size, 4,
+        "blink-rtic expected to have a single static mut u32"
+    );
+    assert_eq!(
+        binary.section_lma(".data"),
+        binary.section_lma(".rodata") + aligned(rodata.size, 4),
+        "data LMA starts behind rodata"
+    );
+
+    let bss = binary.section(".bss").unwrap();
+    assert_eq!(
+        bss.address,
+        data.address + aligned(data.size, 4),
+        "bss in OCRAM behind data"
+    );
+    assert_eq!(binary.section_lma(".bss"), bss.address, "bss is NOLOAD");
+
+    let uninit = binary.section(".uninit").unwrap();
+    assert_eq!(
+        uninit.address,
+        bss.address + aligned(bss.size, 4),
+        "uninit in OCRAM behind bss"
+    );
+    assert_eq!(
+        binary.section_lma(".uninit"),
+        uninit.address,
+        "uninit is NOLOAD"
+    );
+
+    let heap = binary.section(".heap").unwrap();
+    assert_eq!(
+        Section {
+            address: rodata.address + aligned(rodata.size, 4),
+            size: 0,
+        },
+        heap,
+        "0 byte heap in DTCM behind rodata table"
+    );
+    assert_eq!(binary.section_lma(".heap"), heap.address, "Heap is NOLOAD");
+
+    let increment_data_xip = binary.symbol_value("increment_data").unwrap();
+    assert!(
+        0x3000_0000 < increment_data_xip && increment_data_xip < 0x4000_0000,
+        "increment_data is not XiP"
+    );
     assert!(binary.symbol("Reset").is_some());
 }

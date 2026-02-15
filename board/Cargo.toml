@@ -30,6 +30,7 @@ panic-rtt-target = { version = "0.1", optional = true, features = ["cortex-m"] }
 
 [features]
 nonboot = []
+secondary = []
 rtic = []
 # Begin board features.
 teensy4 = [

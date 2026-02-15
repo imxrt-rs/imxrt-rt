@@ -11,6 +11,9 @@ the device linker script that's included in the runtime. By default, the name
 remains `device.x`. The name only matters if the "device" crate feature is
 enabled.
 
+Use `RuntimeBuilder::boot_header` to force inclusion / exclusion of the NXP
+boot ROM header in your image.
+
 ### FlexRAM bank layouts
 
 The runtime builder lets users specify the _layout_, or assignment, of FlexRAM
