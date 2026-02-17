@@ -14,6 +14,10 @@ enabled.
 Use `RuntimeBuilder::boot_header` to force inclusion / exclusion of the NXP
 boot ROM header in your image.
 
+Relax cortex-m-rt version specification, providing support for cortex-m-rt
+after 0.7.3. However, it's not guaranteed that this package supports all
+feature flags available in newer versions of cortex-m-rt.
+
 ### FlexRAM bank layouts
 
 The runtime builder lets users specify the _layout_, or assignment, of FlexRAM
