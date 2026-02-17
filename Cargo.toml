@@ -18,7 +18,7 @@ device = ["cortex-m-rt/device"]
 cfg-if = "1.0"
 
 [target.'cfg(all(target_arch = "arm", target_os = "none"))'.dependencies]
-cortex-m-rt = { version = "=0.7.3", features = ["set-vtor", "set-sp"] }
+cortex-m-rt = { version = "0.7.3", features = ["set-vtor", "set-sp"] }
 
 [target.'cfg(all(target_arch = "arm", target_os = "none"))'.dev-dependencies]
 board = { path = "board" }

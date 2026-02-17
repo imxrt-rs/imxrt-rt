@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+Relax cortex-m-rt version specification, providing support for cortex-m-rt
+after 0.7.3. However, it's not guaranteed that this package supports all
+feature flags available in newer versions of cortex-m-rt.
+
 ## [0.1.7] 2025-06-14
 
 Introduce `RuntimeBuilder::in_flash` for creating images that can be launched
