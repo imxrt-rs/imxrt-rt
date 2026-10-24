@@ -198,11 +198,19 @@
 
 #![cfg_attr(all(target_arch = "arm", target_os = "none"), no_std)]
 
+/// `__ecc_ram_config` bit set when ITCM ECC is active.
+const ECC_ITCM_ACTIVE: u32 = 1 << 0;
+/// `__ecc_ram_config` bit set when DTCM ECC is active.
+const ECC_DTCM_ACTIVE: u32 = 1 << 1;
+
 cfg_if::cfg_if! {
     if #[cfg(all(target_arch = "arm", target_os = "none"))] {
         mod target;
         pub use target::*;
     } else {
+        /// `__ecc_ram_config` bit set when OCRAM ECC is active.
+        const ECC_OCRAM_ACTIVE: u32 = 1 << 2;
+
         mod host;
         pub use host::*;
     }

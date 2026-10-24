@@ -71,6 +71,26 @@ global_asm! {r#"
 
 .endm
 
+.macro maybe_zero_section64 dst, src, end
+    ldr r0, =\dst
+    ldr r2, =\src
+    cmp r2, r0
+    beq 999f
+
+    ldr r1, =\end
+    movw r2, #0
+
+  888:
+    cmp r0, r1
+    bge 999f
+
+    strd r2, r2, [r0], #8
+    b 888b
+
+  999:
+
+.endm
+
 __pre_init:
     ldr r0, =__imxrt_rt_v0.2        @ Need to know which chip family we're initializing.
     ldr r1, =0x1180
@@ -107,11 +127,8 @@ __pre_init:
     # - the CPU issues RMW operations for smaller accesses.
     # - the CPU retries operations when signaled.
     #
-    # If there's no ECC region, the host sets the ends
-    # to zero, and we skip the instructions.
-    movw r3, #0
-    ldr r0, =__eitcm
-    cmp r0, r3
+    ldr r2, =__ecc_ram_config
+    tst r2, #{ecc_itcm}
     itttt ne
     ldrne r0, =0xE000EF90           @ ITCMCR
     ldrne r1, [r0]                  @ r1 = *ITCMCR
@@ -119,8 +136,7 @@ __pre_init:
     strne r1, [r0]                  @ *ITCMCR = r1
 
     # Same as above, but for DTCM.
-    ldr r0, =__edtcm
-    cmp r0, r3
+    tst r2, #{ecc_dtcm}
     itttt ne
     ldrne r0, =0xE000EF94           @ DTCMCR
     ldrne r1, [r0]                  @ r1 = *DTCMCR
@@ -130,12 +146,19 @@ __pre_init:
     dsb
     isb
 
-    # Zero memory regions for any ECC support.
-    # If ECC isn't enabled, then the host generates
-    # values that short circuit the loops.
-    zero_section64 __sitcm  , __eitcm
-    zero_section64 __sdtcm  , __edtcm
-    zero_section64 __socram , __eocram
+    # If any ECC is active, try to zero the RAM-resident sections with 64-bit writes.
+    # We may skip sections if the contents should have already been loaded (by the
+    # debugger, perhaps).
+    cmp r2, #0
+    beq 1000f
+    zero_section64          __estack                            , __sstack
+    maybe_zero_section64    __svector_table , __sivector_table  , __evector_table
+    maybe_zero_section64    __stext         , __sitext          , __etext
+    maybe_zero_section64    __srodata       , __sirodata        , __erodata
+    maybe_zero_section64    __sdata         , __sidata          , __edata
+    zero_section64          __sbss                              , __ebss
+    zero_section64          __suninit                           , __euninit
+    zero_section64          __sheap                             , __eheap
 
     b 1000f
 
@@ -154,7 +177,9 @@ __pre_init:
 
 .cfi_endproc
 .size __pre_init, . - __pre_init
-"#
+"#,
+    ecc_itcm = const crate::ECC_ITCM_ACTIVE,
+    ecc_dtcm = const crate::ECC_DTCM_ACTIVE,
 }
 
 /// Returns a pointer to the end of the heap.

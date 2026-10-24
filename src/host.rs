@@ -926,8 +926,8 @@ fn write_flexram_memories(
     Ok(())
 }
 
-/// Generate spans for zeroing ECC RAM.
-fn write_ecc_zero_spans(
+/// Generate the symbol content for ECC RAM configurations.
+fn write_ecc_config(
     output: &mut dyn Write,
     family: Family,
     flexram_layout: &[FlexRamKind],
@@ -938,44 +938,21 @@ fn write_ecc_zero_spans(
     let dtcm_count = layout_count_of(FlexRamKind::Dtcm, flexram_layout);
     let ocram_count = layout_count_of(FlexRamKind::Ocram, flexram_layout);
 
-    // If memory isn't available or doesn't need
-    // use ECC, then we don't need to zero it.
-    // Generate dummy values that skip the loops.
-
+    let mut ecc_ram_config = 0_u32;
     if itcm_count > 0 && flexram_ecc.is_enable() {
-        // Make sure to zero the reserved regions, too,
-        // just in case they're accidentally / intentionally accessed.
-        let itcm = family.itcm_start_size(itcm_count);
-        let start = itcm.start - 32;
-        let end = start + itcm.size + 32;
-        writeln!(output, "__sitcm = {:#010X};", start)?;
-        writeln!(output, "__eitcm = {:#010X};", end)?;
-    } else {
-        writeln!(output, "__sitcm = 0;")?;
-        writeln!(output, "__eitcm = 0;")?;
-    };
-
-    if dtcm_count > 0 && flexram_ecc.is_enable() {
-        writeln!(output, "__sdtcm = ORIGIN(DTCM);")?;
-        writeln!(output, "__edtcm = ORIGIN(DTCM) + LENGTH(DTCM);")?;
-    } else {
-        writeln!(output, "__sdtcm = 0;")?;
-        writeln!(output, "__edtcm = 0;")?;
-    };
-
-    let ocram = family.ocram_start_size(ocram_count, flexram_ecc, mecc64);
-
-    // The zeroization should specifically target one of the two regions.
-    // But we're not prepared to do that, so incur the loop for the whole
-    // region no matter which is enabled.
-    if ocram.size > 0 && (mecc64.is_enable() || flexram_ecc.is_enable()) {
-        writeln!(output, "__socram = {:#010X};", ocram.start)?;
-        writeln!(output, "__eocram = {:#010X};", ocram.start + ocram.size)?;
-    } else {
-        writeln!(output, "__socram = 0;")?;
-        writeln!(output, "__eocram = 0;")?;
+        ecc_ram_config |= crate::ECC_ITCM_ACTIVE;
     }
 
+    if dtcm_count > 0 && flexram_ecc.is_enable() {
+        ecc_ram_config |= crate::ECC_DTCM_ACTIVE;
+    }
+
+    let ocram = family.ocram_start_size(ocram_count, flexram_ecc, mecc64);
+    if ocram.size > 0 && (mecc64.is_enable() || flexram_ecc.is_enable()) {
+        ecc_ram_config |= crate::ECC_OCRAM_ACTIVE;
+    }
+
+    writeln!(output, "__ecc_ram_config = {ecc_ram_config:#010X};")?;
     Ok(())
 }
 
@@ -1003,7 +980,7 @@ fn write_flash_memory_map(
     write_flexram_memories(output, family, flexram_layout, flexram_ecc, mecc64)?;
     writeln!(output, "}}")?;
     writeln!(output, "__fcb_offset = {:#X};", family.fcb_offset())?;
-    write_ecc_zero_spans(output, family, flexram_layout, flexram_ecc, mecc64)?;
+    write_ecc_config(output, family, flexram_layout, flexram_ecc, mecc64)?;
     Ok(())
 }
 
@@ -1025,7 +1002,7 @@ fn write_ram_memory_map(
     writeln!(output, "MEMORY {{")?;
     write_flexram_memories(output, family, flexram_layout, flexram_ecc, mecc64)?;
     writeln!(output, "}}")?;
-    write_ecc_zero_spans(output, family, flexram_layout, flexram_ecc, mecc64)?;
+    write_ecc_config(output, family, flexram_layout, flexram_ecc, mecc64)?;
     Ok(())
 }
 
