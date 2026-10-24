@@ -313,14 +313,14 @@ fn imxrt1010evk() {
     assert_eq!(text.address, ITCM, "text");
     assert_eq!(
         binary.section_lma(".text"),
-        aligned(0x6000_2000 + vector_table.size + xip.size, 4),
+        aligned(0x6000_2000 + vector_table.size + xip.size, 8),
         "text VMA expected behind vector table"
     );
 
     let rodata = binary.section(".rodata").unwrap();
     assert_eq!(
         rodata.address,
-        aligned(0x6000_2000 + vector_table.size + text.size + xip.size, 4),
+        aligned(0x6000_2000 + vector_table.size + text.size + xip.size, 8),
         "rodata LMA & VMA expected behind text"
     );
     assert_eq!(rodata.address, binary.section_lma(".rodata"));
@@ -328,19 +328,19 @@ fn imxrt1010evk() {
     let data = binary.section(".data").unwrap();
     assert_eq!(data.address, 0x2020_0000, "data VMA in OCRAM");
     assert_eq!(
-        data.size, 4,
-        "blink-rtic expected to have a single static mut u32"
+        data.size, 8,
+        "blink-rtic expected to have a single static mut u32, padded to 8 bytes"
     );
     assert_eq!(
         binary.section_lma(".data"),
-        rodata.address + aligned(rodata.size, 4),
+        rodata.address + aligned(rodata.size, 8),
         "data LMA starts behind rodata"
     );
 
     let bss = binary.section(".bss").unwrap();
     assert_eq!(
         bss.address,
-        data.address + aligned(data.size, 4),
+        data.address + aligned(data.size, 8),
         "bss in OCRAM behind data"
     );
     assert_eq!(binary.section_lma(".bss"), bss.address, "bss is NOLOAD");
@@ -348,7 +348,7 @@ fn imxrt1010evk() {
     let uninit = binary.section(".uninit").unwrap();
     assert_eq!(
         uninit.address,
-        bss.address + aligned(bss.size, 4),
+        bss.address + aligned(bss.size, 8),
         "uninit in OCRAM behind bss"
     );
     assert_eq!(
@@ -425,10 +425,10 @@ fn imxrt1010evk_ram() {
 
     let xip = binary.section(".xip").unwrap();
     let text = binary.section(".text").unwrap();
-    assert_eq!(text.address, aligned(ITCM + xip.size, 4), "text");
+    assert_eq!(text.address, aligned(ITCM + xip.size, 8), "text");
     assert_eq!(
         binary.section_lma(".text"),
-        aligned(ITCM + xip.size, 4),
+        aligned(ITCM + xip.size, 8),
         "text LMA == VMA for RAM boot"
     );
 
@@ -443,23 +443,23 @@ fn imxrt1010evk_ram() {
     let data = binary.section(".data").unwrap();
     assert_eq!(
         data.address,
-        rodata.address + aligned(rodata.size, 4),
+        rodata.address + aligned(rodata.size, 8),
         "data VMA in OCRAM behind rodata"
     );
     assert_eq!(
-        data.size, 4,
-        "blink-rtic expected to have a single static mut u32"
+        data.size, 8,
+        "blink-rtic expected to have a single static mut u32, padded to 8 bytes"
     );
     assert_eq!(
         binary.section_lma(".data"),
-        rodata.address + aligned(rodata.size, 4),
+        rodata.address + aligned(rodata.size, 8),
         "data LMA == VMA for RAM boot"
     );
 
     let bss = binary.section(".bss").unwrap();
     assert_eq!(
         bss.address,
-        data.address + aligned(data.size, 4),
+        data.address + aligned(data.size, 8),
         "bss in OCRAM behind data"
     );
     assert_eq!(binary.section_lma(".bss"), bss.address, "bss is NOLOAD");
@@ -467,7 +467,7 @@ fn imxrt1010evk_ram() {
     let uninit = binary.section(".uninit").unwrap();
     assert_eq!(
         uninit.address,
-        bss.address + aligned(bss.size, 4),
+        bss.address + aligned(bss.size, 8),
         "uninit in OCRAM behind bss"
     );
     assert_eq!(
@@ -554,12 +554,12 @@ fn baseline_teensy4(
     let text = binary.section(".text").unwrap();
     let expected_text_address = aligned(
         binary.section_lma(".vector_table") + vector_table.size + xip.size,
-        4,
+        8,
     );
     assert_eq!(text.address, expected_text_address, "text");
     assert_eq!(
         binary.section_lma(".text"),
-        aligned(0x6000_2000 + vector_table.size + xip.size, 4),
+        aligned(0x6000_2000 + vector_table.size + xip.size, 8),
         "text VMA expected behind vector table"
     );
 
@@ -569,7 +569,7 @@ fn baseline_teensy4(
         vector_table.address + vector_table.size,
         "rodata LMA & VMA expected behind text"
     );
-    assert!(binary.section_lma(".rodata") >= binary.section_lma(".text") + aligned(text.size, 4));
+    assert!(binary.section_lma(".rodata") >= binary.section_lma(".text") + aligned(text.size, 8));
 
     let data = binary.section(".data").unwrap();
     assert_eq!(
@@ -578,19 +578,19 @@ fn baseline_teensy4(
         "data VMA in DTCM behind rodata"
     );
     assert_eq!(
-        data.size, 4,
-        "blink-rtic expected to have a single static mut u32"
+        data.size, 8,
+        "blink-rtic expected to have a single static mut u32, padded to 8 bytes"
     );
     assert_eq!(
         binary.section_lma(".data"),
-        binary.section_lma(".rodata") + aligned(rodata.size, 4),
+        binary.section_lma(".rodata") + aligned(rodata.size, 8),
         "data LMA starts behind rodata"
     );
 
     let bss = binary.section(".bss").unwrap();
     assert_eq!(
         bss.address,
-        data.address + aligned(data.size, 4),
+        data.address + aligned(data.size, 8),
         "bss in DTCM behind data"
     );
     assert_eq!(binary.section_lma(".bss"), bss.address, "bss is NOLOAD");
@@ -598,7 +598,7 @@ fn baseline_teensy4(
     let uninit = binary.section(".uninit").unwrap();
     assert_eq!(
         uninit.address,
-        bss.address + aligned(bss.size, 4),
+        bss.address + aligned(bss.size, 8),
         "uninit in DTCM behind bss"
     );
     assert_eq!(
@@ -610,7 +610,7 @@ fn baseline_teensy4(
     let heap = binary.section(".heap").unwrap();
     assert_eq!(
         Section {
-            address: uninit.address + aligned(uninit.size, 4),
+            address: uninit.address + aligned(uninit.size, 8),
             size: heap_size
         },
         heap,
@@ -801,7 +801,7 @@ fn imxrt1170evk_cm7() {
     assert_eq!(text.address, ITCM, "text");
     assert_eq!(
         binary.section_lma(".text"),
-        aligned(0x3000_2000 + vector_table.size + xip.size, 4),
+        aligned(0x3000_2000 + vector_table.size + xip.size, 8),
         "text VMA expected behind vector table"
     );
 
@@ -812,25 +812,25 @@ fn imxrt1170evk_cm7() {
         "rodata moved to DTCM behind vector table"
     );
     assert!(
-        binary.section_lma(".rodata") >= 0x3000_2000 + vector_table.size + aligned(text.size, 4),
+        binary.section_lma(".rodata") >= 0x3000_2000 + vector_table.size + aligned(text.size, 8),
     );
 
     let data = binary.section(".data").unwrap();
     assert_eq!(data.address, 0x2024_0000, "data VMA in OCRAM");
     assert_eq!(
-        data.size, 4,
-        "blink-rtic expected to have a single static mut u32"
+        data.size, 8,
+        "blink-rtic expected to have a single static mut u32, padded to 8 bytes"
     );
     assert_eq!(
         binary.section_lma(".data"),
-        binary.section_lma(".rodata") + aligned(rodata.size, 4),
+        binary.section_lma(".rodata") + aligned(rodata.size, 8),
         "data LMA starts behind rodata"
     );
 
     let bss = binary.section(".bss").unwrap();
     assert_eq!(
         bss.address,
-        data.address + aligned(data.size, 4),
+        data.address + aligned(data.size, 8),
         "bss in OCRAM behind data"
     );
     assert_eq!(binary.section_lma(".bss"), bss.address, "bss is NOLOAD");
@@ -838,7 +838,7 @@ fn imxrt1170evk_cm7() {
     let uninit = binary.section(".uninit").unwrap();
     assert_eq!(
         uninit.address,
-        bss.address + aligned(bss.size, 4),
+        bss.address + aligned(bss.size, 8),
         "uninit in OCRAM behind bss"
     );
     assert_eq!(
@@ -850,7 +850,7 @@ fn imxrt1170evk_cm7() {
     let heap = binary.section(".heap").unwrap();
     assert_eq!(
         Section {
-            address: rodata.address + aligned(rodata.size, 4),
+            address: rodata.address + aligned(rodata.size, 8),
             size: 0,
         },
         heap,
@@ -943,7 +943,7 @@ fn imxrt1170evk_cm7_nonboot() {
     assert_eq!(text.address, ITCM, "text");
     assert_eq!(
         binary.section_lma(".text"),
-        0x3000_0000 + IMAGE_OFFSET + aligned(xip.size, 4) + vector_table.size,
+        0x3000_0000 + IMAGE_OFFSET + aligned(xip.size, 8) + vector_table.size,
         "text VMA expected behind vector table"
     );
 
@@ -954,25 +954,25 @@ fn imxrt1170evk_cm7_nonboot() {
         "rodata moved to DTCM behind vector table"
     );
     assert!(
-        binary.section_lma(".rodata") >= 0x3000_2000 + vector_table.size + aligned(text.size, 4),
+        binary.section_lma(".rodata") >= 0x3000_2000 + vector_table.size + aligned(text.size, 8),
     );
 
     let data = binary.section(".data").unwrap();
     assert_eq!(data.address, 0x2024_0000, "data VMA in OCRAM");
     assert_eq!(
-        data.size, 4,
-        "blink-rtic expected to have a single static mut u32"
+        data.size, 8,
+        "blink-rtic expected to have a single static mut u32, padded to 8 bytes"
     );
     assert_eq!(
         binary.section_lma(".data"),
-        binary.section_lma(".rodata") + aligned(rodata.size, 4),
+        binary.section_lma(".rodata") + aligned(rodata.size, 8),
         "data LMA starts behind rodata"
     );
 
     let bss = binary.section(".bss").unwrap();
     assert_eq!(
         bss.address,
-        data.address + aligned(data.size, 4),
+        data.address + aligned(data.size, 8),
         "bss in OCRAM behind data"
     );
     assert_eq!(binary.section_lma(".bss"), bss.address, "bss is NOLOAD");
@@ -980,7 +980,7 @@ fn imxrt1170evk_cm7_nonboot() {
     let uninit = binary.section(".uninit").unwrap();
     assert_eq!(
         uninit.address,
-        bss.address + aligned(bss.size, 4),
+        bss.address + aligned(bss.size, 8),
         "uninit in OCRAM behind bss"
     );
     assert_eq!(
@@ -992,7 +992,7 @@ fn imxrt1170evk_cm7_nonboot() {
     let heap = binary.section(".heap").unwrap();
     assert_eq!(
         Section {
-            address: rodata.address + aligned(rodata.size, 4),
+            address: rodata.address + aligned(rodata.size, 8),
             size: 0,
         },
         heap,
@@ -1075,7 +1075,7 @@ fn imxrt1170evk_cm7_secondary() {
     assert_eq!(text.address, ITCM, "text");
     assert_eq!(
         binary.section_lma(".text"),
-        aligned(0x3000_2000 + IMAGE_OFFSET + vector_table.size + xip.size, 4),
+        aligned(0x3000_2000 + IMAGE_OFFSET + vector_table.size + xip.size, 8),
         "text VMA expected behind vector table"
     );
 
@@ -1087,25 +1087,25 @@ fn imxrt1170evk_cm7_secondary() {
     );
     assert!(
         binary.section_lma(".rodata")
-            >= 0x3000_2000 + IMAGE_OFFSET + vector_table.size + aligned(text.size, 4),
+            >= 0x3000_2000 + IMAGE_OFFSET + vector_table.size + aligned(text.size, 8),
     );
 
     let data = binary.section(".data").unwrap();
     assert_eq!(data.address, 0x2024_0000, "data VMA in OCRAM");
     assert_eq!(
-        data.size, 4,
-        "blink-rtic expected to have a single static mut u32"
+        data.size, 8,
+        "blink-rtic expected to have a single static mut u32, padded to 8 bytes"
     );
     assert_eq!(
         binary.section_lma(".data"),
-        binary.section_lma(".rodata") + aligned(rodata.size, 4),
+        binary.section_lma(".rodata") + aligned(rodata.size, 8),
         "data LMA starts behind rodata"
     );
 
     let bss = binary.section(".bss").unwrap();
     assert_eq!(
         bss.address,
-        data.address + aligned(data.size, 4),
+        data.address + aligned(data.size, 8),
         "bss in OCRAM behind data"
     );
     assert_eq!(binary.section_lma(".bss"), bss.address, "bss is NOLOAD");
@@ -1113,7 +1113,7 @@ fn imxrt1170evk_cm7_secondary() {
     let uninit = binary.section(".uninit").unwrap();
     assert_eq!(
         uninit.address,
-        bss.address + aligned(bss.size, 4),
+        bss.address + aligned(bss.size, 8),
         "uninit in OCRAM behind bss"
     );
     assert_eq!(
@@ -1125,7 +1125,7 @@ fn imxrt1170evk_cm7_secondary() {
     let heap = binary.section(".heap").unwrap();
     assert_eq!(
         Section {
-            address: rodata.address + aligned(rodata.size, 4),
+            address: rodata.address + aligned(rodata.size, 8),
             size: 0,
         },
         heap,

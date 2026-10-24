@@ -159,7 +159,7 @@ __pre_init:
 
 /// Returns a pointer to the end of the heap.
 ///
-/// The returned pointer is guaranteed to be 4-byte aligned.
+/// The returned pointer is guaranteed to be 8-byte aligned.
 #[inline]
 pub fn heap_end() -> *mut u32 {
     unsafe extern "C" {
