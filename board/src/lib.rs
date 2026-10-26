@@ -1,7 +1,7 @@
 //! A very simple, multi-board BSP for imxrt-rt-support examples.
 #![no_std]
 
-use imxrt_ral as ral;
+pub use imxrt_ral as ral;
 
 cfg_if::cfg_if! {
     if #[cfg(feature = "teensy4")] {

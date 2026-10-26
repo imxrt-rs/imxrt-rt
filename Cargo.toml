@@ -23,6 +23,7 @@ cortex-m-rt = { version = "0.7.3", features = ["set-vtor", "set-sp"] }
 [target.'cfg(all(target_arch = "arm", target_os = "none"))'.dev-dependencies]
 board = { path = "board" }
 cortex-m-rtic = { version = "1.0" }
+rtt-target = { version = "0.3", features = ["cortex-m"] }
 
 [target.'cfg(not(all(target_arch = "arm", target_os = "none")))'.dev-dependencies]
 goblin = "0.5"
@@ -30,6 +31,10 @@ goblin = "0.5"
 [[example]]
 name = "blink-rtic"
 required-features = ["board/rtic"]
+
+[[example]]
+name = "rip_through_ram"
+required-features = ["board/imxrt1170evk-cm7"]
 
 [workspace]
 members = [

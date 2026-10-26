@@ -14,6 +14,12 @@ pub mod rtic_support {
     #[allow(non_snake_case)] // For RTIC trickery...
     pub mod Interrupt {
         pub const PIT: crate::ral::Interrupt = crate::ral::Interrupt::PIT1;
+        pub const FLEXRAM: crate::ral::Interrupt = crate::ral::Interrupt::FLEXRAM;
+        pub const FLEXRAM_ECC: crate::ral::Interrupt = crate::ral::Interrupt::FLEXRAM_ECC;
+        pub const MECC1_INT: crate::ral::Interrupt = crate::ral::Interrupt::MECC1_INT;
+        pub const MECC1_FATAL_INT: crate::ral::Interrupt = crate::ral::Interrupt::MECC1_FATAL_INT;
+        pub const MECC2_INT: crate::ral::Interrupt = crate::ral::Interrupt::MECC2_INT;
+        pub const MECC2_FATAL_INT: crate::ral::Interrupt = crate::ral::Interrupt::MECC2_FATAL_INT;
     }
     pub use Interrupt as interrupt;
 }
