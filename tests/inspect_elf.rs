@@ -12,12 +12,21 @@ type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
 /// Build an example with optional environment variables, returning a path to the ELF.
 fn cargo_build_with_envs(board: &str, envs: &[(&str, &str)]) -> Result<PathBuf> {
+    cargo_build_with_envs_in(board, board, envs)
+}
+
+/// Like [`cargo_build_with_envs`], but builds in `target/{target_dir}`.
+fn cargo_build_with_envs_in(
+    board: &str,
+    target_dir: &str,
+    envs: &[(&str, &str)],
+) -> Result<PathBuf> {
     let status = Command::new("cargo")
         .arg("build")
         .arg("--example=blink-rtic")
         .arg(format!("--features=board/{board},board/rtic"))
         .arg("--target=thumbv7em-none-eabihf")
-        .arg(format!("--target-dir=target/{board}"))
+        .arg(format!("--target-dir=target/{target_dir}"))
         .arg("--quiet")
         .envs(envs.iter().copied())
         .spawn()?
@@ -31,7 +40,7 @@ fn cargo_build_with_envs(board: &str, envs: &[(&str, &str)]) -> Result<PathBuf> 
     }
 
     let path = PathBuf::from(format!(
-        "target/{board}/thumbv7em-none-eabihf/debug/examples/blink-rtic"
+        "target/{target_dir}/thumbv7em-none-eabihf/debug/examples/blink-rtic"
     ));
     Ok(path)
 }
@@ -267,6 +276,12 @@ fn imxrt1010evk() {
     );
     assert_eq!(binary.flexram_config().unwrap(), 0b11_10_0101);
     assert_eq!(binary.symbol_value("__ecc_ram_config").unwrap(), 0);
+    assert_eq!(binary.symbol_value("__sitcm_unused").unwrap(), 0);
+    assert_eq!(binary.symbol_value("__eitcm_unused").unwrap(), 0);
+    assert_eq!(binary.symbol_value("__sdtcm_unused").unwrap(), 0);
+    assert_eq!(binary.symbol_value("__edtcm_unused").unwrap(), 0);
+    assert_eq!(binary.symbol_value("__socram_unused").unwrap(), 0);
+    assert_eq!(binary.symbol_value("__eocram_unused").unwrap(), 0);
 
     let ivt = binary.ivt().unwrap();
     assert_eq!(ivt.magic_header, 0x402000D1);
@@ -382,6 +397,12 @@ fn imxrt1010evk_ram() {
     let binary = ImxrtBinary::new(&elf, &contents);
 
     assert_eq!(binary.symbol_value("__ecc_ram_config").unwrap(), 0);
+    assert_eq!(binary.symbol_value("__sitcm_unused").unwrap(), 0);
+    assert_eq!(binary.symbol_value("__eitcm_unused").unwrap(), 0);
+    assert_eq!(binary.symbol_value("__sdtcm_unused").unwrap(), 0);
+    assert_eq!(binary.symbol_value("__edtcm_unused").unwrap(), 0);
+    assert_eq!(binary.symbol_value("__socram_unused").unwrap(), 0);
+    assert_eq!(binary.symbol_value("__eocram_unused").unwrap(), 0);
 
     let stack = binary.section(".stack").unwrap();
     assert_eq!(
@@ -499,6 +520,12 @@ fn baseline_teensy4(
         0b11111111_101010101010101010101010
     );
     assert_eq!(binary.symbol_value("__ecc_ram_config").unwrap(), 0);
+    assert_eq!(binary.symbol_value("__sitcm_unused").unwrap(), 0);
+    assert_eq!(binary.symbol_value("__eitcm_unused").unwrap(), 0);
+    assert_eq!(binary.symbol_value("__sdtcm_unused").unwrap(), 0);
+    assert_eq!(binary.symbol_value("__edtcm_unused").unwrap(), 0);
+    assert_eq!(binary.symbol_value("__socram_unused").unwrap(), 0);
+    assert_eq!(binary.symbol_value("__eocram_unused").unwrap(), 0);
 
     let ivt = binary.ivt().unwrap();
     assert_eq!(ivt.magic_header, 0x402000D1);
@@ -844,6 +871,84 @@ fn imxrt1170evk_cm7() {
         "increment_data is not XiP"
     );
     assert!(binary.symbol("Reset").is_some());
+
+    assert_eq!(
+        binary.symbol_value("__sitcm_unused").unwrap(),
+        aligned(text.address + text.size, 8),
+        "Unused ITCM starts behind text"
+    );
+    assert_eq!(binary.symbol_value("__eitcm_unused").unwrap(), 0x4_0000);
+    assert_eq!(
+        binary.symbol_value("__sdtcm_unused").unwrap(),
+        aligned(rodata.address + rodata.size, 8),
+        "Unused DTCM starts behind dtcm.data"
+    );
+    assert_eq!(
+        binary.symbol_value("__edtcm_unused").unwrap(),
+        DTCM + 0x4_0000
+    );
+    assert_eq!(
+        binary.symbol_value("__socram_unused").unwrap(),
+        aligned(uninit.address + uninit.size, 8),
+        "Unused OCRAM starts behind uninit"
+    );
+    assert_eq!(binary.symbol_value("__eocram_unused").unwrap(), 0x2034_0000);
+}
+
+#[test]
+#[ignore = "building an example can take time"]
+fn imxrt1170evk_cm7_vector_table_pad() {
+    let path = cargo_build_with_envs_in(
+        "imxrt1170evk-cm7",
+        "imxrt1170evk-cm7-vector-table-pad",
+        &[("BOARD_STACK", "8200")], // Introduce vector table padding.
+    )
+    .expect("Unable to build example");
+    let contents = fs::read(path).expect("Could not read ELF file");
+    let elf = Elf::parse(&contents).expect("Could not parse ELF");
+
+    let binary = ImxrtBinary::new(&elf, &contents);
+    assert_eq!(binary.symbol_value("__ecc_ram_config").unwrap(), 0b111);
+
+    let stack = binary.section(".stack").unwrap();
+    assert_eq!(
+        Section {
+            address: DTCM,
+            size: 8200
+        },
+        stack,
+        "stack not at ORIGIN(DTCM), or not 8200 bytes large"
+    );
+
+    let vector_table = binary.section(".vector_table").unwrap();
+    assert_eq!(
+        vector_table.address,
+        DTCM + 9 * 1024,
+        "vector table not at the next 1024-byte boundary behind the stack"
+    );
+
+    let vector_table_pad = binary.section(".vector_table_pad").unwrap();
+    assert_eq!(
+        Section {
+            address: stack.address + stack.size,
+            size: vector_table.address - (stack.address + stack.size),
+        },
+        vector_table_pad,
+        "vector table padding doesn't span the stack to the vector table"
+    );
+    assert_eq!(
+        binary.section_header(".vector_table_pad").unwrap().sh_type,
+        goblin::elf::section_header::SHT_NOBITS,
+        "vector table padding is NOLOAD"
+    );
+    assert_eq!(
+        binary.symbol_value("__svector_table_pad").unwrap(),
+        vector_table_pad.address
+    );
+    assert_eq!(
+        binary.symbol_value("__evector_table_pad").unwrap(),
+        vector_table.address
+    );
 }
 
 #[test]
@@ -975,6 +1080,28 @@ fn imxrt1170evk_cm7_nonboot() {
     );
     assert_eq!(binary.section_lma(".heap"), heap.address, "Heap is NOLOAD");
     assert!(binary.symbol("Reset").is_some());
+
+    assert_eq!(
+        binary.symbol_value("__sitcm_unused").unwrap(),
+        aligned(text.address + text.size, 8),
+        "Unused ITCM starts behind text"
+    );
+    assert_eq!(binary.symbol_value("__eitcm_unused").unwrap(), 0x4_0000);
+    assert_eq!(
+        binary.symbol_value("__sdtcm_unused").unwrap(),
+        aligned(rodata.address + rodata.size, 8),
+        "Unused DTCM starts behind dtcm.data"
+    );
+    assert_eq!(
+        binary.symbol_value("__edtcm_unused").unwrap(),
+        DTCM + 0x4_0000
+    );
+    assert_eq!(
+        binary.symbol_value("__socram_unused").unwrap(),
+        aligned(uninit.address + uninit.size, 8),
+        "Unused OCRAM starts behind uninit"
+    );
+    assert_eq!(binary.symbol_value("__eocram_unused").unwrap(), 0x2034_0000);
 }
 
 #[test]
@@ -1114,4 +1241,26 @@ fn imxrt1170evk_cm7_secondary() {
         "increment_data is not XiP"
     );
     assert!(binary.symbol("Reset").is_some());
+
+    assert_eq!(
+        binary.symbol_value("__sitcm_unused").unwrap(),
+        aligned(text.address + text.size, 8),
+        "Unused ITCM starts behind text"
+    );
+    assert_eq!(binary.symbol_value("__eitcm_unused").unwrap(), 0x4_0000);
+    assert_eq!(
+        binary.symbol_value("__sdtcm_unused").unwrap(),
+        aligned(rodata.address + rodata.size, 8),
+        "Unused DTCM starts behind dtcm.data"
+    );
+    assert_eq!(
+        binary.symbol_value("__edtcm_unused").unwrap(),
+        DTCM + 0x4_0000
+    );
+    assert_eq!(
+        binary.symbol_value("__socram_unused").unwrap(),
+        aligned(uninit.address + uninit.size, 8),
+        "Unused OCRAM starts behind uninit"
+    );
+    assert_eq!(binary.symbol_value("__eocram_unused").unwrap(), 0x2034_0000);
 }

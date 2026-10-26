@@ -824,6 +824,18 @@ impl RuntimeBuilder {
         let link_x = include_bytes!("host/imxrt-link.x");
         writer.write_all(link_x)?;
 
+        // ECC configurations, varying by user build settings, need to go at
+        // the back. We're using a linker script to figure out the spans of
+        // unused RAM regions for zeroing. We need the other sections placed
+        // before we do that.
+        write_ecc_config(
+            writer,
+            self.family,
+            &self.flexram_layout,
+            self.flexram_ecc,
+            self.mecc64,
+        )?;
+
         Ok(())
     }
 
@@ -937,18 +949,54 @@ fn write_ecc_config(
     let itcm_count = layout_count_of(FlexRamKind::Itcm, flexram_layout);
     let dtcm_count = layout_count_of(FlexRamKind::Dtcm, flexram_layout);
     let ocram_count = layout_count_of(FlexRamKind::Ocram, flexram_layout);
+    let ocram = family.ocram_start_size(ocram_count, flexram_ecc, mecc64);
+
+    let itcm_ecc = itcm_count > 0 && flexram_ecc.is_enable();
+    let dtcm_ecc = dtcm_count > 0 && flexram_ecc.is_enable();
+    let ocram_ecc = ocram.size > 0 && (mecc64.is_enable() || flexram_ecc.is_enable());
+    let any_ecc_ram = itcm_ecc || dtcm_ecc || ocram_ecc;
+
+    if any_ecc_ram {
+        writeln!(output, "SECTIONS {{")?;
+    }
+    if itcm_ecc {
+        writeln!(
+            output,
+            "  .unused.itcm (NOLOAD) : ALIGN(8) {{ . = ALIGN(8); __sitcm_unused = .; . = ORIGIN(ITCM) + LENGTH(ITCM); __eitcm_unused = .; }} > ITCM"
+        )?;
+    } else {
+        writeln!(output, "__sitcm_unused = 0; __eitcm_unused = 0;")?;
+    }
+    if dtcm_ecc {
+        writeln!(
+            output,
+            "  .unused.dtcm (NOLOAD) : ALIGN(8) {{ . = ALIGN(8); __sdtcm_unused = .; . = ORIGIN(DTCM) + LENGTH(DTCM); __edtcm_unused = .; }} > DTCM"
+        )?;
+    } else {
+        writeln!(output, "__sdtcm_unused = 0; __edtcm_unused = 0;")?;
+    }
+    if ocram_ecc {
+        writeln!(
+            output,
+            "  .unused.ocram (NOLOAD) : ALIGN(8) {{ . = ALIGN(8); __socram_unused = .; . = ORIGIN(OCRAM) + LENGTH(OCRAM); __eocram_unused = .; }} > OCRAM"
+        )?;
+    } else {
+        writeln!(output, "__socram_unused = 0; __eocram_unused = 0;")?;
+    }
+    if any_ecc_ram {
+        writeln!(output, "}}")?;
+    }
 
     let mut ecc_ram_config = 0_u32;
-    if itcm_count > 0 && flexram_ecc.is_enable() {
+    if itcm_ecc {
         ecc_ram_config |= crate::ECC_ITCM_ACTIVE;
     }
 
-    if dtcm_count > 0 && flexram_ecc.is_enable() {
+    if dtcm_ecc {
         ecc_ram_config |= crate::ECC_DTCM_ACTIVE;
     }
 
-    let ocram = family.ocram_start_size(ocram_count, flexram_ecc, mecc64);
-    if ocram.size > 0 && (mecc64.is_enable() || flexram_ecc.is_enable()) {
+    if ocram_ecc {
         ecc_ram_config |= crate::ECC_OCRAM_ACTIVE;
     }
 
@@ -980,7 +1028,6 @@ fn write_flash_memory_map(
     write_flexram_memories(output, family, flexram_layout, flexram_ecc, mecc64)?;
     writeln!(output, "}}")?;
     writeln!(output, "__fcb_offset = {:#X};", family.fcb_offset())?;
-    write_ecc_config(output, family, flexram_layout, flexram_ecc, mecc64)?;
     Ok(())
 }
 
@@ -1002,7 +1049,6 @@ fn write_ram_memory_map(
     writeln!(output, "MEMORY {{")?;
     write_flexram_memories(output, family, flexram_layout, flexram_ecc, mecc64)?;
     writeln!(output, "}}")?;
-    write_ecc_config(output, family, flexram_layout, flexram_ecc, mecc64)?;
     Ok(())
 }
 

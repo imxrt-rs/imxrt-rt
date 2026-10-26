@@ -51,6 +51,13 @@ SECTIONS
     _stack_start = __sstack;
   } > REGION_STACK
 
+  .vector_table_pad (NOLOAD) : ALIGN(8)
+  {
+    __svector_table_pad = .;
+    . = ALIGN(1024);
+    __evector_table_pad = .;
+  } > REGION_VTABLE
+
   .vector_table : ALIGN(1024)
   {
     FILL(0xff);
@@ -170,6 +177,9 @@ SECTIONS
 ASSERT(__sstack % 8 == 0 && __estack % 8 == 0, "
 BUG(imxrt-rt): .stack is not 8-byte aligned");
 
+ASSERT(__svector_table_pad % 8 == 0 && __evector_table_pad % 8 == 0, "
+BUG(imxrt-rt): .vector_table_pad is not 8-byte aligned");
+
 ASSERT(__stext % 8 == 0 && __etext % 8 == 0, "
 BUG(imxrt-rt): .text is not 8-byte aligned");
 
@@ -199,7 +209,9 @@ BUG(imxrt-rt): .heap is not 8-byte aligned");
 
 /* # Position checks */
 
-/* ## .vector_table */
+ASSERT(__evector_table_pad == ADDR(.vector_table), "
+BUG(imxrt-rt): .vector_table_pad does not end at the vector table");
+
 ASSERT(__reset_vector == ADDR(.vector_table) + 0x8, "
 BUG(imxrt-rt): the reset vector is missing");
 

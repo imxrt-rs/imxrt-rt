@@ -151,7 +151,10 @@ __pre_init:
     # debugger, perhaps).
     cmp r2, #0
     beq 1000f
+
+    zero_section64          0x00                                , 0x20
     zero_section64          __estack                            , __sstack
+    zero_section64          __svector_table_pad                 , __evector_table_pad
     maybe_zero_section64    __svector_table , __sivector_table  , __evector_table
     maybe_zero_section64    __stext         , __sitext          , __etext
     maybe_zero_section64    __srodata       , __sirodata        , __erodata
@@ -159,6 +162,10 @@ __pre_init:
     zero_section64          __sbss                              , __ebss
     zero_section64          __suninit                           , __euninit
     zero_section64          __sheap                             , __eheap
+
+    zero_section64          __sitcm_unused                      , __eitcm_unused
+    zero_section64          __sdtcm_unused                      , __edtcm_unused
+    zero_section64          __socram_unused                     , __eocram_unused
 
     b 1000f
 
