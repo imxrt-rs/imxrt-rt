@@ -9,11 +9,17 @@ fn extract_features() -> HashSet<String> {
 
 /// Creates a runtime for a particular family, adjusting whether the image is expected to be boot
 /// based on provided features.
-fn create_runtime(family: imxrt_rt::Family, flash_size: usize) -> imxrt_rt::RuntimeBuilder {
-    if cfg!(feature = "nonboot") | cfg!(feature = "secondary") {
+fn create_runtime(
+    family: imxrt_rt::Family,
+    flash_size: usize,
+    features: &HashSet<String>,
+) -> imxrt_rt::RuntimeBuilder {
+    if features.contains("nonboot") | features.contains("secondary") {
         let mut bldr = imxrt_rt::RuntimeBuilder::in_flash(family, flash_size, 256 * 1024);
-        bldr.boot_header(cfg!(feature = "secondary"));
+        bldr.boot_header(features.contains("secondary"));
         bldr
+    } else if features.contains("ram") {
+        imxrt_rt::RuntimeBuilder::from_ram(family)
     } else {
         imxrt_rt::RuntimeBuilder::from_flexspi(family, flash_size)
     }
@@ -25,7 +31,7 @@ fn create_runtime(family: imxrt_rt::Family, flash_size: usize) -> imxrt_rt::Runt
 /// values and observe how they might affect the tests.
 fn main() {
     let features = extract_features();
-    for feature in features {
+    for feature in features.iter() {
         match feature.as_str() {
             "teensy4" => {
                 imxrt_rt::RuntimeBuilder::from_flexspi(imxrt_rt::Family::Imxrt1060, 1984 * 1024)
@@ -47,6 +53,12 @@ fn main() {
                     .build()
                     .unwrap()
             }
+            "imxrt1010evk" if features.contains("ram") => {
+                imxrt_rt::RuntimeBuilder::from_ram(imxrt_rt::Family::Imxrt1010)
+                    .heap_size(1024)
+                    .build()
+                    .unwrap();
+            }
             "imxrt1010evk" => imxrt_rt::RuntimeBuilder::from_flexspi(
                 imxrt_rt::Family::Imxrt1010,
                 16 * 1024 * 1024,
@@ -57,20 +69,15 @@ fn main() {
             .heap_size_env_override("BOARD_HEAP")
             .build()
             .unwrap(),
-            "imxrt1170evk_cm7" => create_runtime(imxrt_rt::Family::Imxrt1170, 256 * 1024)
-                .rodata(imxrt_rt::Memory::Dtcm)
-                .stack_size_env_override("BOARD_STACK")
-                .heap_size_env_override("BOARD_HEAP")
-                .flexram_ecc(imxrt_rt::FlexRamEcc::Enable)
-                .mecc64(imxrt_rt::Mecc64::Enable)
-                .build()
-                .unwrap(),
-            "imxrt1010evk_ram" => {
-                imxrt_rt::RuntimeBuilder::from_ram(imxrt_rt::Family::Imxrt1010)
-                    .heap_size(1024)
+            "imxrt1170evk_cm7" => {
+                create_runtime(imxrt_rt::Family::Imxrt1170, 256 * 1024, &features)
+                    .rodata(imxrt_rt::Memory::Dtcm)
+                    .stack_size_env_override("BOARD_STACK")
+                    .heap_size_env_override("BOARD_HEAP")
+                    .flexram_ecc(imxrt_rt::FlexRamEcc::Enable)
+                    .mecc64(imxrt_rt::Mecc64::Enable)
                     .build()
-                    .unwrap();
-                println!("cargo:rustc-cfg=from_ram");
+                    .unwrap()
             }
             _ => continue,
         }

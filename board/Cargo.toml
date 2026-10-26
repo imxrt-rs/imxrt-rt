@@ -32,6 +32,7 @@ panic-rtt-target = { version = "0.1", optional = true, features = ["cortex-m"] }
 nonboot = []
 secondary = []
 rtic = []
+ram = []
 # Begin board features.
 teensy4 = [
     "imxrt-ral/imxrt1062",
@@ -45,16 +46,18 @@ imxrt1010evk = [
     "dep:panic-rtt-target",
 ]
 imxrt1010evk-ram = [
-    "imxrt-ral/imxrt1011",
-    # No FCB required.
-    "dep:rtt-target",
-    "dep:panic-rtt-target",
+    "ram",
+    "imxrt1010evk",
 ]
 imxrt1170evk-cm7 = [
     "imxrt-ral/imxrt1176_cm7",
     "dep:imxrt1170evk-fcb",
     "dep:rtt-target",
     "dep:panic-rtt-target",
+]
+imxrt1170evk-cm7-ram = [
+    "ram",
+    "imxrt1170evk-cm7",
 ]
 
 # Dummy boards for testing DCD linking.
