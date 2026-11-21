@@ -22,6 +22,12 @@ cfg_if::cfg_if! {
 
         mod imxrt1170evk_cm7;
         pub use imxrt1170evk_cm7::*;
+    } else if #[cfg(feature = "imxrt1170evk-cm4")] {
+        mod shared { pub mod imxrt11xx; }
+        use shared::imxrt11xx::prepare_pit;
+
+        mod imxrt1170evk_cm4;
+        pub use imxrt1170evk_cm4::*;
     } else {
         compile_error!("No board feature selected!");
     }

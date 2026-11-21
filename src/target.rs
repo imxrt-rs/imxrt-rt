@@ -92,6 +92,12 @@ global_asm! {r#"
 .endm
 
 __pre_init:
+    # Are we the secondary core? If so, only
+    # perform the section copies.
+    ldr r0, =__imxrt_rt_core
+    cmp r0, #0
+    bne 1000f
+
     ldr r0, =__imxrt_rt_v0.2        @ Need to know which chip family we're initializing.
     ldr r1, =0x1180
     cmp r0, r1                      @ Is this an 1180?

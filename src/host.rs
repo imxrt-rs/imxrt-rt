@@ -57,6 +57,32 @@ pub enum FlexSpi {
     FlexSpi2,
 }
 
+/// The core that runs the program.
+///
+/// When supplied, the program's memory map varies. It
+/// may also change the inclusion of boot headers.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[repr(u32)]
+pub enum Core {
+    /// The primary core for the part.
+    ///
+    /// The primary core is the one that usually executes
+    /// out of power-on reset. Note that this "primary"
+    /// core assumes that you haven't changed the boot
+    /// fuses to vary the boot core.
+    ///
+    /// This is the only option on 10xx parts. For 11xx
+    /// parts, this is the Cortex-M7. For 1180 parts,
+    /// this is the Cortex-M33.
+    #[default]
+    Primary,
+    /// The secondary core, if available.
+    ///
+    /// For 11xx parts, this is the Cortex-M4. For 1180
+    /// parts, this is the Cortex-M7.
+    Secondary,
+}
+
 impl FlexSpi {
     fn family_default(family: Family) -> Self {
         match family {
@@ -276,7 +302,7 @@ impl FlexRamEcc {
 /// stack sizes, heap sizes, and additional configurations.
 ///
 /// ```
-/// use imxrt_rt::{Family, RuntimeBuilder, Memory, Mecc64, FlexRamEcc};
+/// use imxrt_rt::{Core, Family, RuntimeBuilder, Memory, Mecc64, FlexRamEcc};
 ///
 /// const FLASH_SIZE: usize = 16 * 1024;
 /// let family = Family::Imxrt1060;
@@ -297,6 +323,7 @@ impl FlexRamEcc {
 /// b.linker_script_name("imxrt-link.x");
 /// b.device_script_name("device.x");
 /// b.flexram_ecc(FlexRamEcc::Disable);
+/// b.core(Core::Primary);
 /// b.mecc64(Mecc64::Disable);
 ///
 /// assert_eq!(b, RuntimeBuilder::from_flexspi(family, FLASH_SIZE));
@@ -401,6 +428,28 @@ impl FlexRamEcc {
 /// in between those two allocations, then the runtime allocates the OCRAM region into the
 /// *dedicated* OCRAM banks. To minimize the impact of this partition, minimize your FlexRAM
 /// OCRAM banks.
+///
+/// # Secondary core
+///
+/// Change [`RuntimeBuilder::core`] to link the program for a secondary core,
+/// if supported by your family. You're expected to use the primary core to
+/// boot the secondary core. You should skip the boot headers when linking the
+/// program, using [`RuntimeBuilder::in_flash`]. Generally, the design assumes
+/// that the primary core boots first out of power-on reset.
+///
+/// The runtime guarantees that the vector table is the first object linked
+/// into secondary core's image. Similar to the primary core, the secondary
+/// core's reset handler is XiP, and it can relocate itself from flash into its
+/// accessible RAM regions.
+///
+/// ITCM and DTCM are distinct from the primary core. However, flash and OCRAM
+/// are shared. You're responsible for partitioning these regions. Note that
+/// the linker script will assume that each core owns the OCRAM memory region,
+/// which may result in different objects placed at the same address.
+///
+/// FlexRAM, or any flexible TCM configurations, do not apply to a secondary
+/// core. You're free to set it, but it's ignored. Additionally, ECC RAM in the
+/// secondary core is not yet supported.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RuntimeBuilder {
     family: Family,
@@ -420,6 +469,7 @@ pub struct RuntimeBuilder {
     device_script_name: String,
     flexram_ecc: FlexRamEcc,
     mecc64: Mecc64,
+    core: Core,
 }
 
 const DEFAULT_LINKER_SCRIPT_NAME: &str = "imxrt-link.x";
@@ -454,6 +504,7 @@ impl RuntimeBuilder {
             device_script_name: DEFAULT_DEVICE_SCRIPT_NAME.into(),
             flexram_ecc: FlexRamEcc::Disable,
             mecc64: Mecc64::Disable,
+            core: Core::default(),
         }
     }
 
@@ -494,6 +545,7 @@ impl RuntimeBuilder {
             device_script_name: DEFAULT_DEVICE_SCRIPT_NAME.into(),
             flexram_ecc: FlexRamEcc::Disable,
             mecc64: Mecc64::Disable,
+            core: Core::default(),
         }
     }
 
@@ -517,6 +569,7 @@ impl RuntimeBuilder {
             device_script_name: DEFAULT_DEVICE_SCRIPT_NAME.into(),
             flexram_ecc: FlexRamEcc::Disable,
             mecc64: Mecc64::Disable,
+            core: Core::default(),
         }
     }
 
@@ -681,6 +734,12 @@ impl RuntimeBuilder {
         self
     }
 
+    /// Change the target core for the program.
+    pub fn core(&mut self, core: Core) -> &mut Self {
+        self.core = core;
+        self
+    }
+
     /// Commit the runtime configuration.
     ///
     /// `build()` ensures that the generated linker script is available to the
@@ -747,6 +806,7 @@ impl RuntimeBuilder {
                 &self.flexram_layout,
                 self.flexram_ecc,
                 self.mecc64,
+                self.core,
             )?;
 
             if flash_opts.boot_header {
@@ -771,6 +831,7 @@ impl RuntimeBuilder {
                 &self.flexram_layout,
                 self.flexram_ecc,
                 self.mecc64,
+                self.core,
             )?;
         }
 
@@ -820,6 +881,7 @@ impl RuntimeBuilder {
         // The target runtime looks at this value to predicate some pre-init instructions.
         // Could be helpful for binary identification, but it's an undocumented feature.
         writeln!(writer, "__imxrt_rt_v0.2 = {:#010X};", self.family.id(),)?;
+        writeln!(writer, "__imxrt_rt_core = {:#010X};", self.core as u32)?;
 
         let link_x = include_bytes!("host/imxrt-link.x");
         writer.write_all(link_x)?;
@@ -900,6 +962,21 @@ impl RuntimeBuilder {
             return Err(format!("{:?} doesn't support MECC64", self.family));
         }
 
+        match self.core {
+            Core::Primary => { /* Nothing to do */ }
+            Core::Secondary => {
+                if !self.family.has_secondary_core() {
+                    return Err(format!("{:?} doesn't have a secondary core", self.family));
+                }
+                if self.mecc64.is_enable() || self.flexram_ecc.is_enable() {
+                    return Err(format!(
+                        "Secondary core of {:?} doesn't yet support ECC RAM",
+                        self.family
+                    ));
+                }
+            }
+        }
+
         Ok(())
     }
 }
@@ -914,21 +991,19 @@ fn write_flexram_memories(
     flexram_layout: &[FlexRamKind],
     flexram_ecc: FlexRamEcc,
     mecc64: Mecc64,
+    core: Core,
 ) -> io::Result<()> {
     let itcm_count = layout_count_of(FlexRamKind::Itcm, flexram_layout);
     let dtcm_count = layout_count_of(FlexRamKind::Dtcm, flexram_layout);
     let ocram_count = layout_count_of(FlexRamKind::Ocram, flexram_layout);
 
     if itcm_count > 0 {
-        let itcm = family.itcm_start_size(itcm_count);
+        let itcm = family.itcm_start_size(itcm_count, core);
         writeln!(output, "ITCM {itcm}")?;
     }
     if dtcm_count > 0 {
-        writeln!(
-            output,
-            "DTCM (RWX) : ORIGIN = 0x20000000, LENGTH = {:#X}",
-            dtcm_count * family.flexram_bank_size(),
-        )?;
+        let dtcm = family.dtcm_start_size(dtcm_count, core);
+        writeln!(output, "DTCM {dtcm}")?;
     }
 
     let ocram = family.ocram_start_size(ocram_count, flexram_ecc, mecc64);
@@ -1012,6 +1087,7 @@ fn write_flash_memory_map(
     flexram_layout: &[FlexRamKind],
     flexram_ecc: FlexRamEcc,
     mecc64: Mecc64,
+    core: Core,
 ) -> io::Result<()> {
     writeln!(
         output,
@@ -1025,7 +1101,7 @@ fn write_flash_memory_map(
         flash_opts.flash_origin(family).expect("Already checked"),
         flash_opts.size
     )?;
-    write_flexram_memories(output, family, flexram_layout, flexram_ecc, mecc64)?;
+    write_flexram_memories(output, family, flexram_layout, flexram_ecc, mecc64, core)?;
     writeln!(output, "}}")?;
     writeln!(output, "__fcb_offset = {:#X};", family.fcb_offset())?;
     Ok(())
@@ -1041,13 +1117,14 @@ fn write_ram_memory_map(
     flexram_layout: &[FlexRamKind],
     flexram_ecc: FlexRamEcc,
     mecc64: Mecc64,
+    core: Core,
 ) -> io::Result<()> {
     writeln!(
         output,
         "/* Memory map for '{family:?}' that executes from RAM. */",
     )?;
     writeln!(output, "MEMORY {{")?;
-    write_flexram_memories(output, family, flexram_layout, flexram_ecc, mecc64)?;
+    write_flexram_memories(output, family, flexram_layout, flexram_ecc, mecc64, core)?;
     writeln!(output, "}}")?;
     Ok(())
 }
@@ -1091,6 +1168,18 @@ impl Family {
             Family::Imxrt1160 => 0x1160,
             Family::Imxrt1170 => 0x1170,
             Family::Imxrt1180 => 0x1180,
+        }
+    }
+    const fn has_secondary_core(self) -> bool {
+        match self {
+            Family::Imxrt1010
+            | Family::Imxrt1015
+            | Family::Imxrt1020
+            | Family::Imxrt1040
+            | Family::Imxrt1050
+            | Family::Imxrt1060
+            | Family::Imxrt1064 => false,
+            Family::Imxrt1160 | Family::Imxrt1170 | Family::Imxrt1180 => true,
         }
     }
     /// How many FlexRAM banks are available?
@@ -1409,9 +1498,37 @@ impl Family {
         }
     }
 
+    const fn tcm_size(self, banks: usize, core: Core) -> usize {
+        match core {
+            Core::Primary => banks * self.flexram_bank_size(),
+            Core::Secondary => match self {
+                Family::Imxrt1160 | Family::Imxrt1170 => 128 * 1024,
+                Family::Imxrt1180 => 256 * 1024,
+                Family::Imxrt1010
+                | Family::Imxrt1015
+                | Family::Imxrt1020
+                | Family::Imxrt1040
+                | Family::Imxrt1050
+                | Family::Imxrt1060
+                | Family::Imxrt1064 => unreachable!(),
+            },
+        }
+    }
+
+    /// Returns the start and size of the DTCM memory region.
+    const fn dtcm_start_size(self, dtcm_banks: usize, core: Core) -> MemoryRegion {
+        MemoryRegion {
+            start: 0x2000_0000,
+            size: self.tcm_size(dtcm_banks, core),
+            read: true,
+            write: true,
+            exec: true,
+        }
+    }
+
     /// Returns the start and size of the ITCM memory region.
-    const fn itcm_start_size(self, itcm_banks: usize) -> MemoryRegion {
-        let mut itcm_size = itcm_banks * self.flexram_bank_size();
+    const fn itcm_start_size(self, itcm_banks: usize, core: Core) -> MemoryRegion {
+        let mut itcm_size = self.tcm_size(itcm_banks, core);
         let itcm_start = match self {
             Family::Imxrt1010
             | Family::Imxrt1015
@@ -1422,13 +1539,20 @@ impl Family {
             | Family::Imxrt1064
             | Family::Imxrt1160
             | Family::Imxrt1170 => {
+                let itcm_base = match core {
+                    Core::Primary => 0x0000_0000,
+                    Core::Secondary => 0x1FFE_0000,
+                };
                 // Establish a reservation for null pointers.
                 // Note that this reservation is the minimum
                 // size of an MPU region.
                 itcm_size = itcm_size.saturating_sub(32);
-                32
+                itcm_base + 32
             }
-            Family::Imxrt1180 => 0x10000000 - itcm_size,
+            Family::Imxrt1180 => match core {
+                Core::Primary => 0x10000000 - itcm_size,
+                Core::Secondary => 0x0000_0000,
+            },
         };
 
         MemoryRegion {
@@ -1608,7 +1732,7 @@ impl std::fmt::Display for MemoryRegion {
 
 #[cfg(test)]
 mod tests {
-    use crate::{FlexRamEcc, Mecc64, Memory};
+    use crate::{Core, FlexRamEcc, Mecc64, Memory};
 
     use super::{Family, FlexRamBanks, RuntimeBuilder};
     use std::{error, io};
@@ -1787,7 +1911,7 @@ mod tests {
         // at address 0.
         for family in MOST_FAMILIES {
             for itcm_banks in 0..=family.flexram_bank_count() {
-                let itcm = family.itcm_start_size(itcm_banks);
+                let itcm = family.itcm_start_size(itcm_banks, Core::Primary);
                 assert_eq!(itcm.start, 32);
                 assert_eq!(
                     itcm.size,
@@ -1800,7 +1924,7 @@ mod tests {
         // are properly configured.
         let family = Family::Imxrt1180;
         for itcm_banks in 0..=family.flexram_bank_count() {
-            let itcm = family.itcm_start_size(itcm_banks);
+            let itcm = family.itcm_start_size(itcm_banks, Core::Primary);
             assert_ne!(itcm.start, 0);
             assert_eq!(itcm.size, family.flexram_bank_size() * itcm_banks);
         }

@@ -79,6 +79,23 @@ fn main() {
                     .build()
                     .unwrap()
             }
+            "imxrt1170evk_cm4" => imxrt_rt::RuntimeBuilder::in_flash(
+                imxrt_rt::Family::Imxrt1170,
+                256 * 1024,
+                87 * 1024,
+            )
+            .core(imxrt_rt::Core::Secondary)
+            .text(imxrt_rt::Memory::Itcm)
+            .rodata(imxrt_rt::Memory::Dtcm)
+            .data(imxrt_rt::Memory::Dtcm)
+            .vectors(imxrt_rt::Memory::Dtcm)
+            .bss(imxrt_rt::Memory::Dtcm)
+            .uninit(imxrt_rt::Memory::Dtcm)
+            .stack(imxrt_rt::Memory::Dtcm)
+            .heap(imxrt_rt::Memory::Ocram)
+            .heap_size(2 * 1024)
+            .build()
+            .unwrap(),
             _ => continue,
         }
         break;
