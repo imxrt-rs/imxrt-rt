@@ -1551,12 +1551,13 @@ fn flexram_config(family: Family, layout: &[FlexRamKind]) -> u32 {
         let itcm_count = layout_count_of(FlexRamKind::Itcm, layout);
         let dtcm_count = layout_count_of(FlexRamKind::Dtcm, layout);
         let ocram_count = layout_count_of(FlexRamKind::Ocram, layout);
-        match (itcm_count, dtcm_count, ocram_count) {
+        let tcm_size = match (itcm_count, dtcm_count, ocram_count) {
             (1, 1, 0) => 0b00_u32,
-            (2, 0, 0) => 0b10,
-            (0, 2, 0) => 0b01,
+            (2, 0, 0) => 0b01,
+            (0, 2, 0) => 0b10,
             _ => panic!("Unsupported FlexRAM configuration"),
-        }
+        };
+        tcm_size << 3
     } else {
         let mut mask = 0;
         let mut shift = 0;
