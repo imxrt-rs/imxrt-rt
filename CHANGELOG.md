@@ -2,7 +2,9 @@
 
 ## [Unreleased]
 
-Fix how the runtime douples either code or system TCM on the 1180.
+## 0.1.9 2026-11-27
+
+Fix how the runtime doubles either code or system TCM on the 1180.
 
 ## [0.1.8] 2026-04-12
 
