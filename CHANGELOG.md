@@ -22,6 +22,9 @@ Add a `.bootrom_reservation` section in OCRAM. If you need to reserve this
 OCRAM allocation, you may allocate your own `MaybeUninit` buffer sized for
 your boot ROM's requirements.
 
+Add basic support for linking programs for a secondary core. See
+`RuntimeBuilder` documentation for more information and limitations.
+
 All sections now have a 8 byte alignment minimum.
 
 ### FlexRAM bank layouts

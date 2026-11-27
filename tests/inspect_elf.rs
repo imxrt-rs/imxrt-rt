@@ -1264,3 +1264,161 @@ fn imxrt1170evk_cm7_secondary() {
     );
     assert_eq!(binary.symbol_value("__eocram_unused").unwrap(), 0x2034_0000);
 }
+
+#[test]
+#[ignore = "building an example can take time"]
+fn imxrt1170evk_cm4() {
+    const IMAGE_OFFSET: u64 = 87 * 1024;
+    const CM4_ITCM: u64 = 0x1FFE_0020;
+    let path = cargo_build("imxrt1170evk-cm4").expect("Unable to build example");
+    let contents = fs::read(path).expect("Could not read ELF file");
+    let elf = Elf::parse(&contents).expect("Could not parse ELF");
+
+    let binary = ImxrtBinary::new(&elf, &contents);
+    assert_eq!(binary.symbol_value("__imxrt_rt_core"), Some(1));
+    assert_eq!(binary.symbol_value("__imxrt_rt_v0.2"), Some(0x1170));
+
+    assert_eq!(binary.symbol_value("__dcd_start"), None);
+    assert_eq!(binary.symbol_value("__dcd_end"), None);
+    assert_eq!(binary.symbol_value("__dcd"), None);
+    assert!(binary.fcb().is_err());
+    assert_eq!(binary.flexram_config().unwrap(), 0xFFAAFFAA);
+
+    assert_eq!(binary.symbol_value("__ecc_ram_config").unwrap(), 0);
+    assert_eq!(binary.symbol_value("__sitcm_unused").unwrap(), 0);
+    assert_eq!(binary.symbol_value("__eitcm_unused").unwrap(), 0);
+    assert_eq!(binary.symbol_value("__sdtcm_unused").unwrap(), 0);
+    assert_eq!(binary.symbol_value("__edtcm_unused").unwrap(), 0);
+    assert_eq!(binary.symbol_value("__socram_unused").unwrap(), 0);
+    assert_eq!(binary.symbol_value("__eocram_unused").unwrap(), 0);
+
+    assert!(
+        binary.ivt().is_err(),
+        "Secondary core image contains boot IVT"
+    );
+    assert!(
+        binary.section(".boot").is_err(),
+        "Boot section is included in a secondary core image"
+    );
+
+    let stack = binary.section(".stack").unwrap();
+    assert_eq!(
+        Section {
+            address: DTCM,
+            size: 8 * 1024
+        },
+        stack,
+        "stack not at ORIGIN(DTCM), or not 8 KiB large"
+    );
+    assert_eq!(binary.section_lma(".stack"), stack.address);
+
+    let vector_table = binary.section(".vector_table").unwrap();
+    assert_eq!(
+        Section {
+            address: stack.address + stack.size,
+            size: 16 * 4 + IMXRT1170_INTERRUPTS * 4
+        },
+        vector_table,
+        "vector table not at expected VMA behind the stack"
+    );
+    assert!(
+        vector_table.address.is_multiple_of(1024),
+        "vector table is not 1024-byte aligned"
+    );
+    assert_eq!(
+        binary.section_lma(".vector_table"),
+        0x3000_0000 + IMAGE_OFFSET,
+        "vector table is the first object in the secondary core's image"
+    );
+
+    let xip = binary.section(".xip").unwrap();
+    // xip's lma==vma
+    assert_eq!(
+        xip.address,
+        0x3000_0000 + IMAGE_OFFSET + vector_table.size,
+        "xip"
+    );
+    assert_eq!(
+        binary.section_lma(".xip"),
+        0x3000_0000 + IMAGE_OFFSET + vector_table.size,
+        "xip expected behind vector table"
+    );
+
+    let text = binary.section(".text").unwrap();
+    assert_eq!(text.address, CM4_ITCM, "text in the CM4's ITCM");
+    assert_eq!(
+        binary.section_lma(".text"),
+        aligned(0x3000_0000 + IMAGE_OFFSET + vector_table.size + xip.size, 8),
+        "text LMA expected behind xip"
+    );
+
+    let rodata = binary.section(".rodata").unwrap();
+    assert_eq!(
+        rodata.address,
+        vector_table.address + vector_table.size,
+        "rodata moved to DTCM behind vector table"
+    );
+    assert_eq!(
+        binary.section_lma(".rodata"),
+        binary.section_lma(".text") + aligned(text.size, 8),
+        "rodata LMA starts behind text"
+    );
+
+    let data = binary.section(".data").unwrap();
+    assert_eq!(
+        data.address,
+        rodata.address + aligned(rodata.size, 8),
+        "data VMA in DTCM behind rodata"
+    );
+    assert_eq!(
+        data.size, 8,
+        "blink-rtic expected to have a single static mut u32, padded to 8 bytes"
+    );
+    assert_eq!(
+        binary.section_lma(".data"),
+        binary.section_lma(".rodata") + aligned(rodata.size, 8),
+        "data LMA starts behind rodata"
+    );
+
+    let bss = binary.section(".bss").unwrap();
+    assert_eq!(
+        bss.address,
+        data.address + aligned(data.size, 8),
+        "bss in DTCM behind data"
+    );
+    assert_eq!(binary.section_lma(".bss"), bss.address, "bss is NOLOAD");
+
+    let uninit = binary.section(".uninit").unwrap();
+    assert_eq!(
+        uninit.address,
+        bss.address + aligned(bss.size, 8),
+        "uninit in DTCM behind bss"
+    );
+    assert_eq!(
+        binary.section_lma(".uninit"),
+        uninit.address,
+        "uninit is NOLOAD"
+    );
+    assert!(
+        uninit.address + uninit.size <= DTCM + 128 * 1024,
+        "DTCM sections exceed the CM4's 128 KiB DTCM"
+    );
+
+    let heap = binary.section(".heap").unwrap();
+    assert_eq!(
+        Section {
+            address: 0x2024_0000,
+            size: 2048,
+        },
+        heap,
+        "2048 byte heap at the start of OCRAM"
+    );
+    assert_eq!(binary.section_lma(".heap"), heap.address, "Heap is NOLOAD");
+
+    let increment_data_xip = binary.symbol_value("increment_data").unwrap();
+    assert!(
+        0x3000_0000 < increment_data_xip && increment_data_xip < 0x4000_0000,
+        "increment_data is not XiP"
+    );
+    assert!(binary.symbol("Reset").is_some());
+}

@@ -55,6 +55,11 @@ imxrt1170evk-cm7 = [
     "dep:rtt-target",
     "dep:panic-rtt-target",
 ]
+imxrt1170evk-cm4 = [
+    "imxrt-ral/imxrt1176_cm4",
+    "dep:rtt-target",
+    "dep:panic-rtt-target",
+]
 imxrt1170evk-cm7-ram = [
     "ram",
     "imxrt1170evk-cm7",
