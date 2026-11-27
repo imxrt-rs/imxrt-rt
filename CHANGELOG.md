@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+Fix how the runtime douples either code or system TCM on the 1180.
+
 ## [0.1.8] 2026-04-12
 
 Relax cortex-m-rt version specification, providing support for cortex-m-rt

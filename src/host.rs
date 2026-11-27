@@ -1055,11 +1055,11 @@ impl FlexRamBanks {
     fn config_1180(&self) -> u32 {
         match (self.itcm, self.dtcm, self.ocram) {
             (1, 1, 0) => 0b00_u32,
-            (2, 0, 0) => 0b10,
-            (0, 2, 0) => 0b01,
+            (2, 0, 0) => 0b01,
+            (0, 2, 0) => 0b10,
             _ => panic!("Unsupported FlexRAM configuration"),
         }
-        .checked_shl(2)
+        .checked_shl(3)
         .unwrap()
     }
 }
